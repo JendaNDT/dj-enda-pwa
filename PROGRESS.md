@@ -4,11 +4,12 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 4 — Round 1 quick wins **DOKONČENO**
-**Aktuální bod:** 4.1 + 4.2 + 4.3 hotové. Vyhledávání, oblíbené presety
-(Classic + Modern), audio trim pro export — všechno funkční, typecheck prošel.
-**Příští krok:** **Round 2 — 4.5 Desktop wide layout refactor** (samostatná
-session, velký bod). Alternativně Round 3 (4.4 / 4.6 / 4.7 menší UX dotahy).
+**Aktuální fáze:** Fáze 4 — Round 1 + Round 2 hotové
+**Aktuální bod:** 4.1 + 4.2 + 4.3 + 4.5 hotové. Desktop wide layout refactor
+App.tsx hotov, využívá plnou šířku monitoru se sidebarem (controls +
+soubor + export), na mobilu stack.
+**Příští krok:** **Round 3 — UX dotahy** (4.4 custom prompt per AI keyframe,
+4.6 keyboard shortcuts, 4.7 reset AI cache). Před tím commit + push 4.5.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -19,6 +20,36 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 4.5** Desktop wide layout + plná responzivita:
+  - **`src/App.tsx` kompletně přepsaný** — z původního centrovaného `max-w-xl`
+    column na wide grid layout. Žádné jiné komponenty se nedotkly.
+  - **Struktura:**
+    * **Top bar** (`<header>`) — full width, logo + DJ Enda title vlevo,
+      privacy disclaimer pill vpravo. Na `< md` stack vertikálně, na `>= md`
+      side-by-side přes `flex-col md:flex-row md:justify-between`.
+    * **Main** (`<main>`) — `flex-1 max-w-[1600px] mx-auto` wrapper. Padding
+      `px-4 md:px-8 lg:px-12` pro generous breathing room na desktopu.
+    * **Layout grid:** na `< lg` stack vertikálně (`grid-cols-1`), na `>= lg`
+      `grid-cols-[1fr_380px] gap-6 items-start`. Sidebar je sticky
+      (`lg:sticky lg:top-6`) — při scrollu pod vizualizér zůstává viditelný.
+    * **Footer** (`<footer>`) — full width, border-top, `max-w-[1600px]` content.
+  - **Sidebar:**
+    * Sloučená karta „Vybraný soubor" + audio data — kompaktnější, hierarchie
+      přes border-top separator místo dvou karet.
+    * Export controls (`<ExportButton>`) — kvalita, trim slidery, tlačítko.
+    * AI mode má vlastní export uvnitř `AiHybrid`, sidebar pro AI tedy obsahuje
+      jen soubor + audio data (export tlačítko se neukáže).
+  - **Main column:**
+    * Mode toggle (Classic / Modern / AI) nad vizualizérem — pill design zachován,
+      na `>= lg` zarovnaný vlevo, na mobilu centrovaný.
+    * Vizualizér (Classic / Modern / AI) zabere plnou main column width. Canvas
+      má `aspect-video` v komponentě, takže se přirozeně roztáhne na vystavenou
+      šířku (~720-900 px na typickém M4 displeji = velký film-quality preview).
+  - **Bez audio:** centrovaný velký upload box `min-h-[60vh] flex items-center`,
+    drží původní emocionální feel „pojď, hoď sem track".
+  - **Verze v footeru** povýšena na 0.5.0 (major UI milestone).
+  - `npx tsc --noEmit` exit 0.
 
 - **Fáze 4.3** Audio trim/range pro export:
   - `src/lib/export.ts` — nový `ExportRange` typ + `trimAudioBuffer()` helper.
