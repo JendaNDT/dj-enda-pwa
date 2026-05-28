@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import {
   exportVideo,
   exportVideoModern,
+  exportVideoAi,
   estimateOutputSize,
   downloadBlob,
   buildExportFilename,
@@ -13,14 +14,16 @@ import {
   type ExportProgress,
 } from '../lib/export'
 
-export type ExportMode = 'classic' | 'modern'
+export type ExportMode = 'classic' | 'modern' | 'ai'
 
 interface ExportButtonProps {
   audioBuffer: AudioBuffer
   audioFilename: string
-  /** Pro Classic mód = Butterchurn preset key; pro Modern = Modern preset id. */
+  /** Pro Classic = Butterchurn preset; pro Modern = Modern preset id; pro AI = nevyužito. */
   presetKey: string
   mode: ExportMode
+  /** Pro AI mode — URL všech 8 keyframes. */
+  aiImageUrls?: ReadonlyArray<string>
 }
 
 type Status = 'idle' | 'confirming' | 'exporting' | 'done' | 'error'
@@ -44,6 +47,7 @@ export function ExportButton({
   audioFilename,
   presetKey,
   mode,
+  aiImageUrls,
 }: ExportButtonProps) {
   const [status, setStatus] = useState<Status>('idle')
   const [progress, setProgress] = useState<ExportProgress | null>(null)
@@ -56,7 +60,8 @@ export function ExportButton({
   const duration = audioBuffer.duration
   const estimatedBytes = estimateOutputSize(duration, qualityId)
   const filename = buildExportFilename(audioFilename)
-  const modeLabel = mode === 'classic' ? 'Classic' : 'Modern'
+  const modeLabel =
+    mode === 'classic' ? 'Classic' : mode === 'modern' ? 'Modern' : 'AI Hybrid'
   const quality = getExportQualityById(qualityId) ?? EXPORT_QUALITIES[1]
 
   const handleExportClick = () => {
@@ -75,22 +80,35 @@ export function ExportButton({
     abortRef.current = controller
 
     try {
-      const blob =
-        mode === 'classic'
-          ? await exportVideo({
-              audioBuffer,
-              presetKey,
-              qualityId,
-              signal: controller.signal,
-              onProgress: setProgress,
-            })
-          : await exportVideoModern({
-              audioBuffer,
-              presetId: presetKey,
-              qualityId,
-              signal: controller.signal,
-              onProgress: setProgress,
-            })
+      let blob: Blob
+      if (mode === 'classic') {
+        blob = await exportVideo({
+          audioBuffer,
+          presetKey,
+          qualityId,
+          signal: controller.signal,
+          onProgress: setProgress,
+        })
+      } else if (mode === 'modern') {
+        blob = await exportVideoModern({
+          audioBuffer,
+          presetId: presetKey,
+          qualityId,
+          signal: controller.signal,
+          onProgress: setProgress,
+        })
+      } else {
+        if (!aiImageUrls || aiImageUrls.length < 2) {
+          throw new Error('AI export potřebuje hotové keyframes (alespoň 2).')
+        }
+        blob = await exportVideoAi({
+          audioBuffer,
+          imageUrls: aiImageUrls,
+          qualityId,
+          signal: controller.signal,
+          onProgress: setProgress,
+        })
+      }
       downloadBlob(blob, filename)
       setStatus('done')
     } catch (e: unknown) {
@@ -118,7 +136,7 @@ export function ExportButton({
     const etaEstimateMin =
       mode === 'classic'
         ? Math.ceil(duration / 60)
-        : Math.ceil(duration / 60 / 2.5) // Modern je ~2.5× rychlejší než real-time
+        : Math.ceil(duration / 60 / 2.5) // Modern + AI jsou ~2.5× rychlejší
     return (
       <div className="px-6 py-5 rounded-2xl bg-amber-950/30 border border-amber-800/50">
         <div className="text-xs uppercase tracking-wider text-amber-400 mb-2">

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AudioUpload } from './components/AudioUpload'
 import { Visualizer, pickInitialPreset } from './components/Visualizer'
 import { ThreeVisualizer } from './components/ThreeVisualizer'
+import { AiHybrid } from './components/AiHybrid'
 import { ExportButton } from './components/ExportButton'
 import {
   useAudioDecoder,
@@ -11,7 +12,7 @@ import {
 } from './lib/audio'
 import { DEFAULT_PRESET_ID } from './lib/modernPresets'
 
-type VisualizerMode = 'classic' | 'modern'
+type VisualizerMode = 'classic' | 'modern' | 'ai'
 
 function formatFileSize(bytes: number): string {
   const mb = bytes / 1024 / 1024
@@ -165,10 +166,10 @@ function App() {
             </div>
           )}
 
-          {/* Toggle mezi Classic a Modern vizualizérem */}
+          {/* Toggle mezi Classic, Modern a AI Hybrid vizualizérem */}
           {buffer && (
             <div className="flex justify-center">
-              <div className="flex gap-1 p-1 rounded-full bg-neutral-900 border border-neutral-800">
+              <div className="flex gap-1 p-1 rounded-full bg-neutral-900 border border-neutral-800 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setVisualizerMode('classic')}
@@ -178,7 +179,7 @@ function App() {
                       : 'text-neutral-400 hover:text-neutral-200'
                   }`}
                 >
-                  Classic (Butterchurn)
+                  Classic
                 </button>
                 <button
                   type="button"
@@ -189,7 +190,18 @@ function App() {
                       : 'text-neutral-400 hover:text-neutral-200'
                   }`}
                 >
-                  Modern (WebGPU)
+                  Modern
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisualizerMode('ai')}
+                  className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
+                    visualizerMode === 'ai'
+                      ? 'bg-purple-600 text-white'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  AI Hybrid
                 </button>
               </div>
             </div>
@@ -213,8 +225,14 @@ function App() {
             />
           )}
 
+          {/* AI Hybrid (Fáze 3) */}
+          {buffer && visualizerMode === 'ai' && (
+            <AiHybrid audioBuffer={buffer} audioFilename={audioFile.name} />
+          )}
+
           {/* Export — Classic používá Butterchurn pipeline (real-time sync),
-              Modern používá Three.js pipeline s pre-computed features (rychlejší). */}
+              Modern používá Three.js pipeline s pre-computed features (rychlejší).
+              AI mód nemá zatím vlastní export — přijde v 3.3+. */}
           {buffer && visualizerMode === 'classic' && (
             <ExportButton
               audioBuffer={buffer}
@@ -236,7 +254,7 @@ function App() {
       )}
 
       <footer className="mt-16 flex items-center gap-3 text-xs text-neutral-600">
-        <span>Verze 0.2.0 · Fáze 2 dokončena</span>
+        <span>Verze 0.4.0 · Fáze 3 dokončena</span>
         <span className="h-1 w-1 rounded-full bg-neutral-700" />
         <a
           href="https://github.com/JendaNDT/dj-enda-pwa"

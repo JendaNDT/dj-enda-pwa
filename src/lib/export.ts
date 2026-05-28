@@ -111,6 +111,15 @@ export interface ExportModernOptions {
   signal?: AbortSignal
 }
 
+export interface ExportAiOptions {
+  audioBuffer: AudioBuffer
+  /** URL všech 8 AI keyframes (musí být ready). */
+  imageUrls: ReadonlyArray<string>
+  qualityId?: string
+  onProgress: (progress: ExportProgress) => void
+  signal?: AbortSignal
+}
+
 /**
  * Vyexportuje audio + Butterchurn vizualizér do MP4 souboru (H.264 + AAC, 1080p60).
  *
@@ -426,6 +435,262 @@ export async function exportVideoModern(
   } finally {
     // Cleanup
     presetInstance.dispose()
+    renderer.dispose()
+  }
+
+  const buffer = output.target.buffer
+  if (!buffer) {
+    throw new Error('Mediabunny output nevrátil buffer.')
+  }
+  return new Blob([buffer], { type: 'video/mp4' })
+}
+
+/**
+ * Vyexportuje audio + AI vizualizér (crossfade mezi 8 keyframes) do MP4.
+ *
+ * Pipeline:
+ *   - Načte 8 AI obrazů → atlas canvas (4×2 grid).
+ *   - CanvasTexture → WebGPURenderer s TSL crossfade shaderem (totožná logika
+ *     jako AiVisualizer komponenta v UI).
+ *   - Pre-compute Meyda features → frame-by-frame uniforms.
+ *   - Rychlejší-než-real-time render.
+ */
+export async function exportVideoAi(
+  options: ExportAiOptions,
+): Promise<Blob> {
+  const { audioBuffer, imageUrls, qualityId, onProgress, signal } = options
+  const quality = resolveQuality(qualityId)
+  const EXPORT_WIDTH = quality.width
+  const EXPORT_HEIGHT = quality.height
+  const EXPORT_FPS = quality.fps
+  const VIDEO_BITRATE = quality.videoBitrate
+
+  const KEYFRAME_COUNT = 8
+  const ATLAS_COLS = 4
+  const ATLAS_ROWS = 2
+
+  if (imageUrls.length < 2) {
+    throw new Error('AI export potřebuje alespoň 2 hotové keyframes.')
+  }
+
+  const totalFrames = Math.floor(audioBuffer.duration * EXPORT_FPS)
+  const frameDuration = 1 / EXPORT_FPS
+
+  // 1. Sestavit atlas — cell size proportional k exportu pro nejvyšší detail.
+  const cellWidth = Math.min(1280, Math.floor(EXPORT_WIDTH / 2))
+  const cellHeight = Math.floor(cellWidth / (EXPORT_WIDTH / EXPORT_HEIGHT))
+  const atlasWidth = cellWidth * ATLAS_COLS
+  const atlasHeight = cellHeight * ATLAS_ROWS
+
+  const atlasCanvas = document.createElement('canvas')
+  atlasCanvas.width = atlasWidth
+  atlasCanvas.height = atlasHeight
+  const atlasCtx = atlasCanvas.getContext('2d')!
+  atlasCtx.fillStyle = '#0a0a0a'
+  atlasCtx.fillRect(0, 0, atlasWidth, atlasHeight)
+
+  const imagePromises = imageUrls.map(
+    (url) =>
+      new Promise<HTMLImageElement | null>((resolve) => {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => resolve(img)
+        img.onerror = () => resolve(null)
+        img.src = url
+      }),
+  )
+  const images = await Promise.all(imagePromises)
+  let lastImg: HTMLImageElement | null = null
+  for (let i = 0; i < KEYFRAME_COUNT; i++) {
+    const img: HTMLImageElement | null = images[i] ?? lastImg
+    if (img) lastImg = img
+    if (!img) continue
+    const col = i % ATLAS_COLS
+    const row = Math.floor(i / ATLAS_COLS)
+    atlasCtx.drawImage(img, col * cellWidth, row * cellHeight, cellWidth, cellHeight)
+  }
+
+  // 2. Pre-compute features
+  const features = await extractFeatures(
+    audioBuffer,
+    EXPORT_FPS,
+    (pct) => {
+      onProgress({
+        frame: 0,
+        totalFrames,
+        etaSec: 0,
+        fps: 0,
+        stage: 'extract',
+      })
+      void pct
+    },
+  )
+  if (signal?.aborted) throw new Error('Export zrušen uživatelem')
+
+  // 3. OffscreenCanvas + WebGPURenderer
+  const offscreen = new OffscreenCanvas(EXPORT_WIDTH, EXPORT_HEIGHT)
+  const renderer = new WebGPURenderer({
+    canvas: offscreen as unknown as HTMLCanvasElement,
+    antialias: true,
+  })
+  renderer.setSize(EXPORT_WIDTH, EXPORT_HEIGHT, false)
+  renderer.setClearColor(0x0a0a0a, 1)
+  await renderer.init()
+
+  // 4. Scene + camera + plane
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(
+    60,
+    EXPORT_WIDTH / EXPORT_HEIGHT,
+    0.1,
+    10,
+  )
+  camera.position.z = 1.74
+  const planeWidth = 3.6
+  const planeHeight = planeWidth / (EXPORT_WIDTH / EXPORT_HEIGHT)
+  const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight)
+
+  // Atlas texture
+  const atlasTexture = new THREE.CanvasTexture(atlasCanvas)
+  atlasTexture.colorSpace = THREE.SRGBColorSpace
+
+  // Uniforms — identické s AiVisualizer
+  const tsl = await import('three/tsl')
+  const wbg = await import('three/webgpu')
+
+  const uniforms = {
+    keyframeIdx: tsl.uniform(0),
+    rms: tsl.uniform(0),
+    beat: tsl.uniform(0),
+    audioTime: tsl.uniform(0),
+  }
+  const textureNode = tsl.texture(atlasTexture)
+  const cellWidthN = tsl.float(1.0 / ATLAS_COLS)
+  const cellHeightN = tsl.float(1.0 / ATLAS_ROWS)
+  const maxIdx = tsl.float(KEYFRAME_COUNT - 1)
+  const colsF = tsl.float(ATLAS_COLS)
+
+  const material = new wbg.MeshBasicNodeMaterial({ side: THREE.DoubleSide })
+  material.colorNode = tsl.Fn(() => {
+    const baseUv = tsl.uv()
+    const centered = baseUv.sub(tsl.vec2(0.5, 0.5))
+    const zoom = uniforms.rms.mul(0.06).add(1.0)
+    const wobble = tsl.vec2(
+      tsl.sin(uniforms.audioTime.mul(1.7)).mul(0.008),
+      tsl.sin(uniforms.audioTime.mul(1.3)).mul(0.008),
+    )
+    const localUv = centered.div(zoom).add(tsl.vec2(0.5, 0.5)).add(wobble)
+
+    const idx = uniforms.keyframeIdx.clamp(0, maxIdx)
+    const idxA = idx.floor()
+    const idxB = idxA.add(1.0).min(maxIdx)
+    const t = idx.sub(idxA)
+
+    const colA = idxA.mod(colsF)
+    const rowA = idxA.div(colsF).floor()
+    const uvA = tsl.vec2(
+      colA.add(localUv.x).mul(cellWidthN),
+      rowA.add(localUv.y).mul(cellHeightN),
+    )
+    const colB = idxB.mod(colsF)
+    const rowB = idxB.div(colsF).floor()
+    const uvB = tsl.vec2(
+      colB.add(localUv.x).mul(cellWidthN),
+      rowB.add(localUv.y).mul(cellHeightN),
+    )
+    const colorA = textureNode.sample(uvA).rgb
+    const colorB = textureNode.sample(uvB).rgb
+    const baseColor = tsl.mix(colorA, colorB, t)
+
+    const brightness = uniforms.beat.mul(0.35).add(1.0)
+    const brightened = baseColor.mul(brightness)
+
+    const distFromCenter = tsl.length(baseUv.sub(tsl.vec2(0.5, 0.5)))
+    const vigStrength = tsl.oneMinus(uniforms.beat.mul(0.4).add(0.55))
+    const vignette = tsl.oneMinus(
+      tsl.smoothstep(tsl.float(0.35), tsl.float(0.9), distFromCenter).mul(vigStrength),
+    )
+
+    const grainSeed = tsl.sin(
+      baseUv.x.mul(127.1).add(baseUv.y.mul(311.7)).add(uniforms.audioTime.mul(43.7)),
+    )
+    const grain = tsl.fract(grainSeed.mul(43758.5453)).mul(0.06).sub(0.03)
+
+    return brightened.mul(vignette).add(tsl.vec3(grain, grain, grain))
+  })()
+
+  const mesh = new THREE.Mesh(geometry, material)
+  scene.add(mesh)
+
+  // 5. Mediabunny output
+  const output = new Output({
+    format: new Mp4OutputFormat(),
+    target: new BufferTarget(),
+  })
+  const videoSource = new CanvasSource(offscreen, {
+    codec: 'avc',
+    bitrate: VIDEO_BITRATE,
+    keyFrameInterval: 2,
+  })
+  output.addVideoTrack(videoSource, { frameRate: EXPORT_FPS })
+  const audioSource = new AudioBufferSource({
+    codec: 'aac',
+    bitrate: AUDIO_BITRATE,
+  })
+  output.addAudioTrack(audioSource)
+  await output.start()
+
+  try {
+    await audioSource.add(audioBuffer)
+
+    const startWallTime = performance.now()
+    let beatDecay = 0
+    for (let i = 0; i < totalFrames; i++) {
+      if (signal?.aborted) throw new Error('Export zrušen uživatelem')
+
+      const fi = Math.min(i, features.totalFrames - 1)
+      uniforms.rms.value = features.rms[fi]
+      uniforms.audioTime.value = i / EXPORT_FPS
+
+      const beatNow = features.beat[fi]
+      beatDecay = Math.max(beatNow, beatDecay * 0.85)
+      uniforms.beat.value = beatDecay
+
+      const kfFloat = (i / EXPORT_FPS) * (KEYFRAME_COUNT - 1) /
+        audioBuffer.duration
+      uniforms.keyframeIdx.value = Math.min(KEYFRAME_COUNT - 1, kfFloat)
+
+      await renderer.renderAsync(scene, camera)
+      await videoSource.add(i / EXPORT_FPS, frameDuration)
+
+      if (i % 30 === 0 || i === totalFrames - 1) {
+        const elapsedSec = (performance.now() - startWallTime) / 1000
+        const fps = (i + 1) / elapsedSec
+        const remainingFrames = totalFrames - (i + 1)
+        const etaSec = fps > 0 ? remainingFrames / fps : 0
+        onProgress({
+          frame: i + 1,
+          totalFrames,
+          etaSec,
+          fps,
+          stage: 'render',
+        })
+      }
+    }
+
+    onProgress({
+      frame: totalFrames,
+      totalFrames,
+      etaSec: 0,
+      fps: 0,
+      stage: 'finalize',
+    })
+    await output.finalize()
+  } catch (err) {
+    await output.cancel().catch(() => {})
+    throw err
+  } finally {
+    atlasTexture.dispose()
     renderer.dispose()
   }
 

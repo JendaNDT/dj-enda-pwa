@@ -4,8 +4,10 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 2 dokončena 🎉 (volitelná Fáze 3 — AI hybrid přes Fal.ai)
-**Aktuální bod:** 2.8 hotov → Fáze 2 plně uzavřena
+**Aktuální fáze:** Fáze 3 plně dokončena 🎉
+**Aktuální bod:** 3.6 hotov → projekt má všechny tři vizualizéry + export
+**Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
+image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
 natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 (Three.js) je paralelní alternativa, kterou postupně dotahujeme. Žádné
@@ -57,6 +59,70 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
     null, ukáže `<AudioUpload>`. Pokud vybrán soubor, ukáže název + velikost
     + tlačítko „Vybrat jiný soubor".
   - Ověřeno v Chrome: drag-drop, klik, validace, reset všechno funguje.
+- **Fáze 3.4 + 3.5 + 3.6** Polish blok (overlay + cache + AI export):
+  - **3.4 Overlay efekty** v `AiVisualizer.tsx` TSL shaderu:
+    * **Vignette** — `smoothstep(0.35, 0.9, distFromCenter)` × vigStrength.
+      Beat ji rozsvítí (vigStrength klesá s beat). Klidové ztmavnutí ke krajům.
+    * **Film grain** — pseudo-noise `fract(sin(seed × 43758.5453)) × 0.06`.
+      Drobný 3% efekt pro filmový pocit.
+  - **3.5 IndexedDB cache** v `src/lib/aiCache.ts`:
+    * `hashAudioBuffer()` — SHA-256 prvních 64 KB sample dat → 16hex.
+    * `getCachedKeyframes(hash, styleId)` / `setCachedKeyframes(...)`.
+    * `AiHybrid.tsx` při mountu / change audio nebo style spustí cache check.
+      Při hit obnoví keyframes z blobů, status badge „Keyframes načteny z cache".
+    * Po dokončení batch generate uloží 8 blobs do cache.
+  - **3.6 AI export** v `exportVideoAi()`:
+    * Stejná pipeline jako exportVideoModern (rychlejší-než-real-time).
+    * Atlas canvas (cell 1280×720 na 1080p exportu) s 8 obrazy.
+    * Identický TSL shader jako AiVisualizer (vignette, grain, crossfade).
+    * `ExportButton` přijímá `mode='ai'` a `aiImageUrls`. AiHybrid ho zobrazí
+      pod AiVisualizerem, jakmile máš ready keyframes.
+- **Fáze 3.3** AiVisualizer — shader transitions mezi keyframes:
+  - `src/components/AiVisualizer.tsx` — nový komponent (~400 řádků).
+  - **Atlas approach:** všech 8 keyframes nakresleno na jediný 2560×720 canvas
+    (4×2 grid, každá cell 640×360 = 16:9). `THREE.CanvasTexture` z atlasu.
+  - **TSL crossfade shader v Fn() wrapperu:**
+    * `keyframeIdx = audioTime × (N-1) / duration` jako float 0..7.
+    * `idxA = floor`, `idxB = idxA+1`, `t = fract`.
+    * Pro každý slot spočítá UV v atlasu (col/row math z modulo a div).
+    * `mix(textureA, textureB, t)` = plynulý crossfade.
+  - **Audio reactivity:**
+    * RMS modeluje zoom-in efekt (basy nafouknou obrazu).
+    * `audioTime` driveuje malý wobble (sin × sin).
+    * Beat brightness boost (× 1.35 na peak).
+  - **Standardní pipeline:** AudioContext + features pre-compute (Meyda),
+    Start/Pause/Volume controls jako u ostatních vizualizérů.
+  - `AiHybrid.tsx` zobrazuje `<AiVisualizer>` jakmile všech 8 keyframes ready.
+    Pokud částečně, ukáže info card „N/8 hotovo".
+- **Fáze 3.2** Skutečné generování AI obrazů přes HF:
+  - `hfClient.ts` rozšířen o `generateImage(prompt, { modelId?, token?, signal? })`:
+    * Default model **FLUX.1-schnell** (rychlý, dobrá kvalita).
+    * `fetchWithRetry()` s exponential backoff pro 503 (model loading) a 429
+      (rate limit). Max 3 pokusy.
+    * Error handling pro 401 (invalid token), content-type check (HF občas
+      vrátí 200 s JSON errorem).
+  - `AiHybrid.tsx` rozšířen:
+    * **Style dropdown** (Kosmický / Cyberpunk / Příroda / Abstraktní) —
+      4 base prompty. Změna stylu přemapuje prompty pro všechny keyframes.
+    * **Batch generation:** „Generovat 8 AI keyframes" tlačítko iteruje
+      keyframes sekvenčně, ukazuje status per slot (generuji spinner,
+      ready image, error). Progress counter „N / 8 hotovo".
+    * **Cancel button** během generování (AbortController).
+    * **Per-keyframe Regenerate** hover button v slotu — pro jednotlivý retry.
+    * **Object URL cleanup** v useEffect (žádný memory leak při unmountu).
+    * **Image v slotu** přes `<img src={blobUrl}>`.
+- **Fáze 3.1** AI Hybrid mode + HF token UI + storyboard scaffold:
+  - `src/lib/hfClient.ts` — utility pro HF token (localStorage storage,
+    `getHfToken`, `setHfToken`, `clearHfToken`, `describeRateLimit`,
+    `maskToken`). Token zůstává jen v prohlížeči.
+  - `src/components/AiHybrid.tsx` — nová obrazovka:
+    * **HF Token karta** — input pro hf_... token; bez tokenu ~100 req/den,
+      s tokenem ~1000 req/den. Hezky maskovaný display (`hf_•••• 1234`).
+    * **Storyboard karta** — grid 4×2 (8 keyframe slotů). Pro každý slot:
+      thumb placeholder, časový interval (mm:ss–mm:ss), status badge.
+    * **Generate tlačítko** disabled s textem „brzy (Fáze 3.2)".
+  - `App.tsx` — třetí mode `'ai'` v `VisualizerMode`, toggle button přidán,
+    conditional render `<AiHybrid>`. Export tlačítko zatím jen pro Classic/Modern.
 - **Fáze 2.7 + 2.8** Disclaimer banner + UI polish (sloučené):
   - **Disclaimer banner** — pill-shaped, zelený, vždy viditelný pod headerem:
     „Všechno běží jen v tvém prohlížeči — audio, vizualizér, export. Žádný
@@ -264,12 +330,13 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 - Nic. Čekáme na ověření 2.3a v Modern módu a souhlas s **2.3b** (Particle Flow).
 
-## Co je další (volitelné)
+## Co je další
 
-- **Cleanup commit + deploy** — push změny do GitHubu, Vercel auto-redeployne
-  produkci s plnou Fází 2.
-- **Fáze 3 — AI hybrid (volitelná)** — Fal.ai keyframy přes BYO-key. Body 3.1–3.6.
-  Aktuálně low priority; aplikace je už plně funkční.
+- **Commit + deploy** — push změn do GitHubu, Vercel auto-redeployne plnou
+  Fázi 3 na produkci.
+- Projekt je v zásadě **plně dotažený podle původního ROADMAPu**. Případné
+  další fáze (UI vylepšení, další presety, optimalizace) přijdou ad-hoc
+  podle reálných potřeb.
 
 ## Známé bugy / problémy
 

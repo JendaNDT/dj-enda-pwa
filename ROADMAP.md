@@ -83,12 +83,13 @@ algoritmickými vizuály. Drahé, ale vypadá to filmově.
 
 | # | Bod | Status |
 |---|---|---|
-| 3.1 | UI: BYO-key obrazovka — uživatel vloží svůj Fal.ai API klíč (lokálně, IndexedDB) | ⏳ pending |
-| 3.2 | Storyboard mód: rozdělit skladbu na sekce, generovat 1 keyframe Flux 2 / sekci | ⏳ pending |
-| 3.3 | Mezi keyframy: Wan 2.5 image-to-video nebo Kling 2.5 Turbo Pro | ⏳ pending |
-| 3.4 | Kompozice: AI klip + algoritmický overlay (particles, light leaks) přes blend modes | ⏳ pending |
-| 3.5 | Cache AI klipů v IndexedDB — uživatel většinou iteruje, ne generuje nanovo | ⏳ pending |
-| 3.6 | Cenový kalkulátor: před spuštěním ukázat odhad nákladu | ⏳ pending |
+| — | **Strategie změna:** Fal.ai (placená) → HuggingFace + Three.js shader transitions (FREE) | ✅ |
+| 3.1 | UI: AI Hybrid mode, optional HF token, storyboard scaffold | ✅ done |
+| 3.2 | HF generování AI keyframes (FLUX.1-schnell), style dropdown, batch + retry | ✅ done |
+| 3.3 | Three.js shader transitions mezi keyframes + audio reactivity (free, místo placené AI video) | ✅ done |
+| 3.4 | Overlay efekty v AiVisualizer (vignette, film grain) | ✅ done |
+| 3.5 | IndexedDB cache pro AI keyframes (audio hash + style key) | ✅ done |
+| 3.6 | ~~Cenový kalkulátor~~ → AI export přes Mediabunny (free) | ✅ done |
 
 **Akceptační kritérium Fáze 3:** Uživatel s 5 USD na Fal.ai účtě dostane
 hybridní 3min videoklip, kde AI keyframy navazují na rytmus a algoritmický
