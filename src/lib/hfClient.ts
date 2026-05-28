@@ -137,8 +137,10 @@ export async function generateImage(
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
+  // Pozn.: HF v 2025 deprecoval `api-inference.huggingface.co`. Nový endpoint
+  // je `router.huggingface.co/hf-inference/models/...`. Viz AGENTS.md lessons.
   const response = await fetchWithRetry(
-    `https://api-inference.huggingface.co/models/${modelId}`,
+    `https://router.huggingface.co/hf-inference/models/${modelId}`,
     {
       method: 'POST',
       headers,

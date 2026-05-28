@@ -151,6 +151,10 @@ než ho upravíš. Nikdy tiše neuprav test, aby procházel.
 Sem patří **neobvyklá** zjištění, na která narazíme během vývoje a která by
 příští session zase trefila. Formát: krátký bullet point + datum.
 
+- **2026-05-28** — **HuggingFace Inference API endpoint změnil** (deprecated
+  ke konci 2025). Starý `https://api-inference.huggingface.co/models/{id}`
+  hází CORS error v prohlížeči. Nový endpoint: `https://router.huggingface.co/hf-inference/models/{id}`.
+  Stejný request format (POST s `{inputs: prompt}`), stejné headers (Bearer token).
 - **2026-05-28** — `vite-plugin-pwa` má **defaultní workbox limit 2 MiB**
   pro service worker pre-cache. Náš main bundle (Three.js + Butterchurn +
   Mediabunny) přesahuje, build na Vercel pak hodí `PLUGIN_ERROR`.
