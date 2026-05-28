@@ -151,6 +151,10 @@ než ho upravíš. Nikdy tiše neuprav test, aby procházel.
 Sem patří **neobvyklá** zjištění, na která narazíme během vývoje a která by
 příští session zase trefila. Formát: krátký bullet point + datum.
 
+- **2026-05-28** — `vite-plugin-pwa` má **defaultní workbox limit 2 MiB**
+  pro service worker pre-cache. Náš main bundle (Three.js + Butterchurn +
+  Mediabunny) přesahuje, build na Vercel pak hodí `PLUGIN_ERROR`.
+  Fix: `VitePWA({ workbox: { maximumFileSizeToCacheInBytes: 5 * 1024 * 1024 } })`.
 - **2026-05-28** — **Three.js r180+ NEMÁ bundled TS types** (žádné `types` pole
   v package.json). Pro TypeScript je nutno `npm i -D @types/three`.
   Pozor: `tsc --noEmit` chybu **nezachytí** (přes `moduleResolution: bundler`

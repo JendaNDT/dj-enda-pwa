@@ -11,6 +11,12 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
+      workbox: {
+        // Default je 2 MiB, ale náš main bundle s Three.js + Butterchurn +
+        // Mediabunny dělá ~2.1 MB. Zvyšujeme na 5 MiB s rezervou pro budoucí
+        // růst (Fáze 3 přidá AI image generation klient).
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      },
       manifest: {
         name: 'DJ Enda — Hudební videoklipy',
         short_name: 'DJ Enda',
