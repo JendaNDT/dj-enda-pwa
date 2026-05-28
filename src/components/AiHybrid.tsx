@@ -323,18 +323,22 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
           </div>
         ) : (
           <div className="space-y-3">
+            <p className="text-sm text-amber-300">
+              ⚠ HuggingFace ke konci 2025 zrušil anonymous přístup. Pro
+              generování je <strong>token povinný</strong>.
+            </p>
             <p className="text-sm text-neutral-300">
-              Bez tokenu: <strong>{describeRateLimit(false)}</strong>.
-              S volným tokenem z{' '}
+              Vytvoř si volný token na{' '}
               <a
                 href="https://huggingface.co/settings/tokens"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 transition-colors"
               >
-                huggingface.co
-              </a>{' '}
-              dostaneš <strong>{describeRateLimit(true)}</strong>.
+                huggingface.co/settings/tokens
+              </a>
+              {' '}(zdarma, stačí typ „Read"). Dostaneš{' '}
+              <strong>{describeRateLimit(true)}</strong>.
             </p>
             <div className="flex gap-2">
               <input
@@ -491,7 +495,9 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
         <button
           type="button"
           onClick={handleGenerateAll}
-          className="w-full px-6 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors flex items-center justify-center gap-3"
+          disabled={!hasToken}
+          title={!hasToken ? 'Nejdřív přidej HF token nahoře' : undefined}
+          className="w-full px-6 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed text-white font-medium transition-colors flex items-center justify-center gap-3"
         >
           <svg
             viewBox="0 0 24 24"
@@ -504,9 +510,11 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
           >
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
           </svg>
-          {completedCount === 0
-            ? `Generovat ${KEYFRAME_COUNT} AI keyframes`
-            : `Generovat znovu všech ${KEYFRAME_COUNT}`}
+          {!hasToken
+            ? 'Nejdřív přidej HF token (viz nahoře)'
+            : completedCount === 0
+              ? `Generovat ${KEYFRAME_COUNT} AI keyframes`
+              : `Generovat znovu všech ${KEYFRAME_COUNT}`}
         </button>
       )}
 

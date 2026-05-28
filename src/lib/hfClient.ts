@@ -49,11 +49,14 @@ export function clearHfToken(): void {
 
 /**
  * Vrátí očekávaný rate limit popis podle toho, jestli má uživatel token.
+ *
+ * Pozn.: HuggingFace ke konci 2025 zrušil anonymous přístup k Inference API.
+ * Bez tokenu router endpoint hází 401. Token je teď **povinný**.
  */
 export function describeRateLimit(hasToken: boolean): string {
   return hasToken
     ? '~1000 požadavků / den (free HF account)'
-    : '~100 požadavků / den (anonymous)'
+    : 'Bez tokenu HF nepovolí generování (od konce 2025)'
 }
 
 /**
