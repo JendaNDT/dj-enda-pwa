@@ -37,7 +37,7 @@ hotové MP4 s vizualizovanou hudbou připravené na YouTube.
 | 1.7 | Tlačítko „Export" — vykreslit canvas → MP4 přes Mediabunny | ✅ done |
 | 1.8 | Progress bar během exportu (snímek X / N, ETA) | ✅ done |
 | 1.9 | Download výsledného MP4 souboru | ✅ done |
-| 1.10 | Deploy na Vercel/Netlify s COOP/COEP hlavičkami | ⏳ pending |
+| 1.10 | Deploy na Vercel/Netlify s COOP/COEP hlavičkami | ✅ done (na https://dj-enda-pwa.vercel.app) |
 
 **Akceptační kritérium Fáze 1:** Uživatel nahraje 3min MP3 ze Suno AI, vybere
 preset, klikne „Export", po desítkách sekund dostane MP4 1080p s vizualizací

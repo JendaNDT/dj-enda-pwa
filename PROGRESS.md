@@ -4,8 +4,8 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 1 — MVP
-**Aktuální bod:** 1.7–1.9 (právě dokončené, export pipeline) → další 1.10 (deploy)
+**Aktuální fáze:** Fáze 1 hotová → návrh přejít na Fázi 2 (polished, vlastní Three.js + TSL)
+**Aktuální bod:** Fáze 1 uzavřena. Před přechodem na 2.1 doporučen cleanup commit.
 
 ---
 
@@ -53,6 +53,13 @@ dokončeném bodě z `ROADMAP.md`.
     null, ukáže `<AudioUpload>`. Pokud vybrán soubor, ukáže název + velikost
     + tlačítko „Vybrat jiný soubor".
   - Ověřeno v Chrome: drag-drop, klik, validace, reset všechno funguje.
+- **Fáze 1.10** Deploy hotov:
+  - GitHub repo: <https://github.com/JendaNDT/dj-enda-pwa> (public).
+  - Vercel produkce: <https://dj-enda-pwa.vercel.app>.
+  - Auto-deploy: každý push do `main` triggeruje rebuild + redeploy.
+  - Vercel auto-detected Vite, žádná custom konfigurace zatím není potřeba.
+  - Ověřeno: WAV upload (44.8 MB) funguje, dekódování, Butterchurn vizualizér,
+    controls — vše funguje na produkční URL.
 - **Fáze 1.7–1.9** Export do MP4 hotov (sloučené do jednoho stepu):
   - `npm install mediabunny` (v1.45.4) u uživatele.
   - `src/lib/export.ts` — funkce `exportVideo()` s pipeline:
@@ -115,14 +122,21 @@ dokončeném bodě z `ROADMAP.md`.
 
 ## Co je rozjeté
 
-- Nic. Čekáme na ověření 1.7–1.9 v prohlížeči (testovat krátkým trackem) a souhlas
-  s **1.10** (deploy na Vercel/Netlify s COOP/COEP hlavičkami).
+- Nic. **Fáze 1 (MVP) je kompletní.** Aplikace běží na produkci.
 
-## Co je další
+## Co je další (doporučené pořadí)
 
-- **Fáze 1.10** — deploy na Vercel nebo Netlify s COOP/COEP hlavičkami pro
-  SharedArrayBuffer (potřeba pro nějaké WebCodecs scénáře). Tímto se uzavře
-  celá Fáze 1 (MVP). Až uživatel řekne „piš".
+1. **Cleanup commit** (nepovinný, ale zlepšuje repo):
+   - Doplnit `.gitignore` o `dev-dist/`, `.DS_Store`, `*.log`.
+   - Smazat `src/App.css` (prázdný komentář) a default Vite assety
+     (`src/assets/react.svg`, `src/assets/vite.svg`, `src/assets/hero.png`,
+     `public/icons.svg`).
+   - Vytvořit `vercel.json` s bezpečnostními hlavičkami (HSTS, X-Frame-Options,
+     atd.) — best practice.
+   - Nahradit default Vite `README.md` za stručný popis projektu.
+2. **Fáze 2 — Polished:**
+   - 2.1: Nahradit Butterchurn za Three.js r171+ s `WebGPURenderer`.
+   - 2.2–2.8 viz ROADMAP.md.
 
 ## Známé bugy / problémy
 
