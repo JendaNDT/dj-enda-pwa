@@ -13,6 +13,7 @@ import {
   getExportQualityById,
   type ExportProgress,
   type ExportRange,
+  type ExportCredits,
 } from '../lib/export'
 import { extractThumbnails } from '../lib/thumbnails'
 
@@ -65,6 +66,14 @@ export function ExportButton({
   /** Hotový MP4 blob, pamatovaný pro Web Share API (potřebuje File objekt). */
   const resultBlobRef = useRef<Blob | null>(null)
 
+  // Watermark + credits state (Fáze 4.12 + 4.13).
+  const [watermark, setWatermark] = useState<boolean>(false)
+  const [creditsEnabled, setCreditsEnabled] = useState<boolean>(false)
+  /** Default = filename bez extenze (audioFilename → stem). */
+  const defaultTitle = audioFilename.replace(/\.[^/.]+$/, '')
+  const [creditsTitle, setCreditsTitle] = useState<string>(defaultTitle)
+  const [creditsArtist, setCreditsArtist] = useState<string>('')
+
   // Feature-detect Web Share API s File support.
   const canShare =
     typeof navigator !== 'undefined' &&
@@ -83,6 +92,14 @@ export function ExportButton({
     setTrimStart(0)
     setTrimEnd(audioBuffer.duration)
   }, [audioBuffer])
+
+  // Reset credits title z nového filename.
+  useEffect(() => {
+    setCreditsTitle(audioFilename.replace(/\.[^/.]+$/, ''))
+    setCreditsArtist('')
+    setCreditsEnabled(false)
+    setWatermark(false)
+  }, [audioFilename])
 
   // Cleanup thumbnail / result URL při unmountu.
   useEffect(() => {
@@ -103,6 +120,15 @@ export function ExportButton({
   const range: ExportRange | undefined = isTrimmed
     ? { startSec: safeStart, endSec: safeEnd }
     : undefined
+
+  /** Credits předané do export funkcí (pokud zapnuté a title je zadaný). */
+  const credits: ExportCredits | undefined =
+    creditsEnabled && creditsTitle.trim().length > 0
+      ? {
+          title: creditsTitle.trim(),
+          artist: creditsArtist.trim() || undefined,
+        }
+      : undefined
 
   const estimatedBytes = estimateOutputSize(effectiveDuration, qualityId)
   const filename = buildExportFilename(audioFilename)
@@ -133,6 +159,8 @@ export function ExportButton({
           presetKey,
           qualityId,
           range,
+          watermark,
+          credits,
           signal: controller.signal,
           onProgress: setProgress,
         })
@@ -142,6 +170,8 @@ export function ExportButton({
           presetId: presetKey,
           qualityId,
           range,
+          watermark,
+          credits,
           signal: controller.signal,
           onProgress: setProgress,
         })
@@ -154,6 +184,8 @@ export function ExportButton({
           imageUrls: aiImageUrls,
           qualityId,
           range,
+          watermark,
+          credits,
           signal: controller.signal,
           onProgress: setProgress,
         })
@@ -511,6 +543,68 @@ export function ExportButton({
             </span>
           )}
         </div>
+      </div>
+
+      {/* Credits karta (intro / outro titulky, Fáze 4.12). */}
+      <div className="px-6 py-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-xs uppercase tracking-wider text-neutral-500">
+            Intro & outro titulky
+          </span>
+          <input
+            type="checkbox"
+            checked={creditsEnabled}
+            onChange={(e) => setCreditsEnabled(e.target.checked)}
+            className="h-4 w-4 accent-purple-500"
+          />
+        </label>
+        {creditsEnabled && (
+          <div className="mt-3 space-y-2">
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">
+                Název skladby
+              </label>
+              <input
+                type="text"
+                value={creditsTitle}
+                onChange={(e) => setCreditsTitle(e.target.value)}
+                placeholder="Track title"
+                className="w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">
+                Autor (volitelný)
+              </label>
+              <input
+                type="text"
+                value={creditsArtist}
+                onChange={(e) => setCreditsArtist(e.target.value)}
+                placeholder="Artist"
+                className="w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <p className="text-xs text-neutral-500">
+              3 s intro „Track: X by Y" + 3 s outro „Made with DJ Enda".
+              Audio v intro a outro je tiché.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Watermark toggle (Fáze 4.13). */}
+      <div className="px-6 py-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-xs uppercase tracking-wider text-neutral-500">
+            Watermark (DJE logo v rohu)
+          </span>
+          <input
+            type="checkbox"
+            checked={watermark}
+            onChange={(e) => setWatermark(e.target.checked)}
+            className="h-4 w-4 accent-purple-500"
+          />
+        </label>
       </div>
 
       <button

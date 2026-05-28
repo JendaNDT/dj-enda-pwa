@@ -4,13 +4,15 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 4 — Round 1–4 hotové
-**Aktuální bod:** 4.1 + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 + 4.8 + 4.9 + 4.10
-hotové. Modern má teď 6 presetů (3 původní + Wave Field / Plasma / Tunnel).
-Post-export thumbnail + share, HF model dropdown s Flux Dev defaultem.
-**Příští krok:** **Round 5 — Nice to have** (4.11 PWA install prompt,
-4.12 intro/outro credits, 4.13 watermark). Backlog: 4.14 Terrain Mesh,
-4.15 Fractal Noise. Před tím commit + push Round 4.
+**Aktuální fáze:** **Fáze 4 KOMPLETNĚ HOTOVÁ** 🎯
+**Aktuální bod:** Všech 13 původně plánovaných bodů 4.1–4.13 hotových.
+Round 5 dotáhl PWA install prompt, intro/outro credits a watermark.
+Modern má 6 presetů, Classic + Modern + AI export má trim + credits +
+watermark + thumbnaily. Kompletní pipeline přes 2D compositor canvas.
+**Příští krok (Fáze 5 v dalším chatu):** Vyhodnotit ohlasy z produkce a
+rozhodnout o dalším směru — buď 4.14/4.15 (Terrain Mesh + Fractal Noise),
+nebo nové fundamentální features (multi-track timeline, MIDI input, atd.).
+Před tím commit + push Round 5.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -21,6 +23,57 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 4.11 + 4.12 + 4.13** PWA install + intro/outro credits + watermark:
+  - **4.11 PWA install prompt** v `App.tsx`:
+    * Window event listenery `beforeinstallprompt` (zachycen, `preventDefault`)
+      a `appinstalled` (čistí prompt po install).
+    * State `installPrompt: BeforeInstallPromptEvent | null`. Custom typ
+      definovaný inline — lib.dom.d.ts ho nemá (Chrome-specific PWA API).
+    * **„Nainstalovat" tlačítko v top baru** vlevo od help tlačítka. Viditelné
+      jen když máme prompt event (Chrome/Edge desktop + mobile, ne Safari).
+      Klik → `prompt.prompt()` → `userChoice` → na accepted skryje tlačítko.
+  - **`src/lib/exportCompositor.ts`** — sdílená vrstva pro 4.12 + 4.13:
+    * `resolveCreditsTiming(credits, mainFrames, fps)` — počítá intro/outro
+      framy a offset hlavního obsahu. Bez credits = passthrough (0 framů).
+    * `padAudioBufferWithSilence(buffer, introSec, outroSec)` — vytvoří
+      nový AudioBuffer s tichem na začátku/konci pomocí `copyToChannel`
+      a `Float32Array.set`. Když intro+outro=0, vrací buffer beze změny.
+    * `drawIntroFrame(ctx, w, h, t, dur, title, artist?)` — gradient pozadí,
+      fade-in „TRACK" label + title + „by artist", fade-out na konci.
+    * `drawOutroFrame(ctx, w, h, t, dur)` — gradient pozadí + DJE logo
+      (manuálně kreslený rounded rect s quadratic curves, OffscreenCanvas
+      `roundRect` cross-browser support je nestabilní) + „Made with DJ Enda".
+    * `drawWatermark(ctx, w, h)` — polopropustný (0.55 alpha) DJE logo
+      v pravém dolním rohu, ~4.5% výšky.
+    * `compositeMainFrame(ctx, source, w, h, withWatermark)` — drawImage
+      ze zdrojového visualizér canvasu + volitelný watermark overlay.
+  - **`src/lib/export.ts` kompletní refactor pipeline:**
+    * Všechny tři exporty (`exportVideo`, `exportVideoModern`, `exportVideoAi`)
+      přijímají optional `watermark?: boolean` a `credits?: ExportCredits`.
+    * Vizualizér renderuje do **vlastního `vizCanvas`** (WebGL pro Butterchurn,
+      WebGPU pro Three.js a AI). Compositor `canvas` je 2D OffscreenCanvas.
+      Mediabunny `CanvasSource` dostává compositor canvas — všechny overlay
+      operace tam.
+    * Render loop iteruje **přes `totalFrames = intro + main + outro`**:
+      pro intro/outro framy se kreslí intro/outro overlay přímo do compositoru,
+      pro main framy se renderuje vizualizér do vizCanvas + composite + optional
+      watermark. Audio buffer je padded silence tak, aby hlavní audio začínalo
+      v čase `introDurationSec`.
+    * Pro Modern + AI: Meyda features se extractují **jen z hlavního audia**
+      (trimmedBuffer), main render loop indexuje features přes `mainIdx =
+      i - mainStartFrame`. Beat decay i audioTime také relative k mainIdx.
+    * Pro Classic: Butterchurn audio routing musí běžet v real-time, takže
+      sync `while (audioCtx.currentTime < targetCtxTime)` zůstává — analyser
+      uvidí silence v intro/outro fázi (irrelevantní, tehdy se nerenderuje
+      vizualizér).
+  - **`ExportButton.tsx` rozšíření idle UI** o:
+    * **Credits karta** s checkbox toggle. Při zapnutí ukáže input pro title
+      (předvyplněný z filename bez extenze) a artist (volitelný). Reset přes
+      `useEffect([audioFilename])` při změně souboru.
+    * **Watermark toggle** karta — jednoduchý checkbox.
+    * `credits: ExportCredits | undefined` resolved jen když `creditsEnabled &&
+      title.trim().length > 0` — chrání před prázdnými titly.
 
 - **Fáze 4.10** HF model dropdown:
   - `src/lib/hfClient.ts` — nový `HF_MODELS` array s 3 modely:

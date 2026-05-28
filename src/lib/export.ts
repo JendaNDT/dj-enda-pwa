@@ -11,6 +11,16 @@ import * as THREE from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { extractFeatures } from './audioFeatures'
 import { createUniforms, getPresetById } from './modernPresets'
+import {
+  resolveCreditsTiming,
+  padAudioBufferWithSilence,
+  drawIntroFrame,
+  drawOutroFrame,
+  compositeMainFrame,
+  type ExportCredits,
+} from './exportCompositor'
+
+export type { ExportCredits } from './exportCompositor'
 
 const AUDIO_BITRATE = 128_000 // 128 kbps AAC — konstantní napříč všemi presety
 
@@ -147,6 +157,10 @@ export interface ExportOptions {
   qualityId?: string
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
   range?: ExportRange
+  /** Polopropustný DJE watermark v pravém dolním rohu hlavního obsahu (4.13). */
+  watermark?: boolean
+  /** Intro + outro titulky před a po hlavním obsahu (4.12). */
+  credits?: ExportCredits
   onProgress: (progress: ExportProgress) => void
   signal?: AbortSignal
 }
@@ -158,6 +172,8 @@ export interface ExportModernOptions {
   qualityId?: string
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
   range?: ExportRange
+  watermark?: boolean
+  credits?: ExportCredits
   onProgress: (progress: ExportProgress) => void
   signal?: AbortSignal
 }
@@ -169,6 +185,8 @@ export interface ExportAiOptions {
   qualityId?: string
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
   range?: ExportRange
+  watermark?: boolean
+  credits?: ExportCredits
   onProgress: (progress: ExportProgress) => void
   signal?: AbortSignal
 }
@@ -192,7 +210,16 @@ export interface ExportAiOptions {
  * uživatel nic neslyší.
  */
 export async function exportVideo(options: ExportOptions): Promise<Blob> {
-  const { audioBuffer: srcBuffer, presetKey, qualityId, range, onProgress, signal } = options
+  const {
+    audioBuffer: srcBuffer,
+    presetKey,
+    qualityId,
+    range,
+    watermark,
+    credits,
+    onProgress,
+    signal,
+  } = options
   const quality = resolveQuality(qualityId)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
@@ -200,24 +227,38 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
   const VIDEO_BITRATE = quality.videoBitrate
 
   // Pokud uživatel zvolil trim, oříznout buffer na požadovaný rozsah.
-  const audioBuffer = trimAudioBuffer(srcBuffer, range)
+  const trimmedBuffer = trimAudioBuffer(srcBuffer, range)
 
-  const duration = audioBuffer.duration
-  const totalFrames = Math.floor(duration * EXPORT_FPS)
+  const mainDuration = trimmedBuffer.duration
+  const mainFrames = Math.floor(mainDuration * EXPORT_FPS)
+  const timing = resolveCreditsTiming(credits, mainFrames, EXPORT_FPS)
+  const totalFrames = timing.introFrames + mainFrames + timing.outroFrames
+
+  // Audio padding silence pro intro / outro.
+  const audioBuffer = padAudioBufferWithSilence(
+    trimmedBuffer,
+    timing.introDurationSec,
+    timing.outroDurationSec,
+  )
+
   const frameDuration = 1 / EXPORT_FPS
 
-  // 1. Offscreen canvas v plné velikosti
+  // 1. Vizualizér canvas (Butterchurn renderuje do WebGL).
+  const vizCanvas = new OffscreenCanvas(EXPORT_WIDTH, EXPORT_HEIGHT)
+  // Compositor canvas (2D) — sem se kopíruje vizualizér + kreslí overlay.
   const canvas = new OffscreenCanvas(EXPORT_WIDTH, EXPORT_HEIGHT)
+  const compositorCtx = canvas.getContext('2d')
+  if (!compositorCtx) throw new Error('Compositor 2D context nedostupný')
 
   // 2. AudioContext pro Butterchurn (audio nezní — pouze pro feedu analyseru)
   const audioCtx = new AudioContext({ sampleRate: audioBuffer.sampleRate })
   const source = audioCtx.createBufferSource()
   source.buffer = audioBuffer
 
-  // 3. Butterchurn vizualizér na offscreen canvasu
+  // 3. Butterchurn vizualizér na vizCanvasu (interní WebGL render).
   const visualizer = butterchurn.createVisualizer(
     audioCtx,
-    canvas as unknown as HTMLCanvasElement,
+    vizCanvas as unknown as HTMLCanvasElement,
     {
       width: EXPORT_WIDTH,
       height: EXPORT_HEIGHT,
@@ -255,24 +296,28 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
   await output.start()
 
   try {
-    // 5. Audio: přidat celý buffer najednou — Mediabunny ho rozseká interně
+    // 5. Audio: padded buffer (silence + main + silence) najednou.
     await audioSource.add(audioBuffer)
 
-    // 6. Spustit přehrávání audia (jen pro Butterchurn analyser, ne destination)
+    // 6. Spustit přehrávání audia. Hlavní render loop sync na audio čas
+    //    POSUNUTÝ o introDuration — audio v intro fázi je silence,
+    //    takže Butterchurn analyser nic neuvidí, ale to nevadí (intro
+    //    má vlastní static frame, ne vizualizér).
     source.start(0)
     const startWallTime = performance.now()
     const startCtxTime = audioCtx.currentTime
 
-    // 7. Video render loop — sync na real-time audio playback
+    // 7. Video render loop — všechny snímky (intro + main + outro).
     for (let i = 0; i < totalFrames; i++) {
       if (signal?.aborted) {
         throw new Error('Export zrušen uživatelem')
       }
 
-      const targetCtxTime = startCtxTime + i / EXPORT_FPS
+      const videoTime = i / EXPORT_FPS
+      const targetCtxTime = startCtxTime + videoTime
 
-      // Čekáme, dokud audio nedosáhne požadovaného času. Tím garantujeme,
-      // že Butterchurn vidí frekvenční data odpovídající aktuálnímu snímku.
+      // Sync na real-time audio playback — Butterchurn potřebuje běžící
+      // AnalyserNode, takže čekáme i v intro/outro fázi (silence).
       while (audioCtx.currentTime < targetCtxTime) {
         if (signal?.aborted) {
           throw new Error('Export zrušen uživatelem')
@@ -280,11 +325,43 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
         await new Promise<void>((r) => setTimeout(r, 1))
       }
 
-      // Render snímku
-      visualizer.render()
+      // Vykreslit jeden snímek na compositor canvas podle fáze.
+      if (i < timing.mainStartFrame) {
+        // Intro fáze.
+        const introT = videoTime
+        drawIntroFrame(
+          compositorCtx,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          introT,
+          timing.introDurationSec,
+          credits?.title ?? '',
+          credits?.artist,
+        )
+      } else if (i >= timing.outroStartFrame) {
+        // Outro fáze.
+        const outroT = videoTime - timing.outroStartFrame / EXPORT_FPS
+        drawOutroFrame(
+          compositorCtx,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          outroT,
+          timing.outroDurationSec,
+        )
+      } else {
+        // Main fáze — vykreslit vizualizér a copy do compositoru.
+        visualizer.render()
+        compositeMainFrame(
+          compositorCtx,
+          vizCanvas,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          watermark === true,
+        )
+      }
 
       // Přidat snímek do Mediabunny (await respektuje encoder backpressure)
-      await videoSource.add(i / EXPORT_FPS, frameDuration)
+      await videoSource.add(videoTime, frameDuration)
 
       // Progress každých 30 snímků (= 2× za sekundu při 60 FPS)
       if (i % 30 === 0 || i === totalFrames - 1) {
@@ -342,7 +419,16 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
 export async function exportVideoModern(
   options: ExportModernOptions,
 ): Promise<Blob> {
-  const { audioBuffer: srcBuffer, presetId, qualityId, range, onProgress, signal } = options
+  const {
+    audioBuffer: srcBuffer,
+    presetId,
+    qualityId,
+    range,
+    watermark,
+    credits,
+    onProgress,
+    signal,
+  } = options
   const quality = resolveQuality(qualityId)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
@@ -350,7 +436,7 @@ export async function exportVideoModern(
   const VIDEO_BITRATE = quality.videoBitrate
 
   // Pokud uživatel zvolil trim, oříznout buffer na požadovaný rozsah.
-  const audioBuffer = trimAudioBuffer(srcBuffer, range)
+  const trimmedBuffer = trimAudioBuffer(srcBuffer, range)
 
   // 1. Najít preset
   const preset = getPresetById(presetId)
@@ -358,12 +444,19 @@ export async function exportVideoModern(
     throw new Error(`Modern preset "${presetId}" neexistuje.`)
   }
 
-  const totalFrames = Math.floor(audioBuffer.duration * EXPORT_FPS)
+  const mainFrames = Math.floor(trimmedBuffer.duration * EXPORT_FPS)
+  const timing = resolveCreditsTiming(credits, mainFrames, EXPORT_FPS)
+  const totalFrames = timing.introFrames + mainFrames + timing.outroFrames
+  const audioBuffer = padAudioBufferWithSilence(
+    trimmedBuffer,
+    timing.introDurationSec,
+    timing.outroDurationSec,
+  )
   const frameDuration = 1 / EXPORT_FPS
 
-  // 2. Pre-compute audio features (Meyda offline)
+  // 2. Pre-compute audio features (Meyda offline) — jen z hlavního obsahu.
   const features = await extractFeatures(
-    audioBuffer,
+    trimmedBuffer,
     EXPORT_FPS,
     (pct) => {
       onProgress({
@@ -379,10 +472,14 @@ export async function exportVideoModern(
 
   if (signal?.aborted) throw new Error('Export zrušen uživatelem')
 
-  // 3. OffscreenCanvas + WebGPURenderer
+  // 3. Vizualizér canvas (WebGPU render) + compositor canvas (2D overlay).
+  const vizCanvas = new OffscreenCanvas(EXPORT_WIDTH, EXPORT_HEIGHT)
   const canvas = new OffscreenCanvas(EXPORT_WIDTH, EXPORT_HEIGHT)
+  const compositorCtx = canvas.getContext('2d')
+  if (!compositorCtx) throw new Error('Compositor 2D context nedostupný')
+
   const renderer = new WebGPURenderer({
-    canvas: canvas as unknown as HTMLCanvasElement,
+    canvas: vizCanvas as unknown as HTMLCanvasElement,
     antialias: true,
   })
   renderer.setSize(EXPORT_WIDTH, EXPORT_HEIGHT, false)
@@ -402,7 +499,7 @@ export async function exportVideoModern(
   const uniforms = createUniforms()
   const presetInstance = preset.setup(scene, uniforms)
 
-  // 5. Mediabunny output
+  // 5. Mediabunny output (compositor canvas je zdrojem video framů).
   const output = new Output({
     format: new Mp4OutputFormat(),
     target: new BufferTarget(),
@@ -424,7 +521,7 @@ export async function exportVideoModern(
   await output.start()
 
   try {
-    // 6. Audio přidat celý buffer najednou
+    // 6. Audio přidat padded buffer (intro silence + main + outro silence).
     await audioSource.add(audioBuffer)
 
     // 7. Render loop bez čekání na real-time — frame-by-frame z features
@@ -436,31 +533,61 @@ export async function exportVideoModern(
         throw new Error('Export zrušen uživatelem')
       }
 
-      // Bezpečnostně omezit index features (totalFrames v features by měl být
-      // ≥ totalFrames v exportu, ale jistota nezaškodí).
-      const fi = Math.min(i, features.totalFrames - 1)
+      const videoTime = i / EXPORT_FPS
 
-      uniforms.rms.value = features.rms[fi]
-      uniforms.low.value = features.low[fi]
-      uniforms.mid.value = features.mid[fi]
-      uniforms.high.value = features.high[fi]
-      uniforms.centroid.value = features.spectralCentroid[fi]
-      uniforms.audioTime.value = i / EXPORT_FPS
+      // Vykreslit snímek podle fáze (intro / main / outro).
+      if (i < timing.mainStartFrame) {
+        const introT = videoTime
+        drawIntroFrame(
+          compositorCtx,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          introT,
+          timing.introDurationSec,
+          credits?.title ?? '',
+          credits?.artist,
+        )
+      } else if (i >= timing.outroStartFrame) {
+        const outroT = videoTime - timing.outroStartFrame / EXPORT_FPS
+        drawOutroFrame(
+          compositorCtx,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          outroT,
+          timing.outroDurationSec,
+        )
+      } else {
+        // Main fáze — uniforms ze (zero-shifted) main frame indexu, render scene.
+        const mainIdx = i - timing.mainStartFrame
+        const fi = Math.min(mainIdx, features.totalFrames - 1)
 
-      const beatNow = features.beat[fi]
-      beatDecay = Math.max(beatNow, beatDecay * 0.85)
-      uniforms.beat.value = beatDecay
+        uniforms.rms.value = features.rms[fi]
+        uniforms.low.value = features.low[fi]
+        uniforms.mid.value = features.mid[fi]
+        uniforms.high.value = features.high[fi]
+        uniforms.centroid.value = features.spectralCentroid[fi]
+        uniforms.audioTime.value = mainIdx / EXPORT_FPS
 
-      // Preset update callback (rotation, particle pozice, atd.)
-      if (presetInstance.update) {
-        presetInstance.update(uniforms, frameDuration)
+        const beatNow = features.beat[fi]
+        beatDecay = Math.max(beatNow, beatDecay * 0.85)
+        uniforms.beat.value = beatDecay
+
+        if (presetInstance.update) {
+          presetInstance.update(uniforms, frameDuration)
+        }
+
+        await renderer.renderAsync(scene, camera)
+        compositeMainFrame(
+          compositorCtx,
+          vizCanvas,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          watermark === true,
+        )
       }
 
-      // Render snímku (WebGPU async)
-      await renderer.renderAsync(scene, camera)
-
       // Přidat snímek do Mediabunny (await respektuje backpressure)
-      await videoSource.add(i / EXPORT_FPS, frameDuration)
+      await videoSource.add(videoTime, frameDuration)
 
       // Progress každých 30 snímků
       if (i % 30 === 0 || i === totalFrames - 1) {
@@ -517,7 +644,16 @@ export async function exportVideoModern(
 export async function exportVideoAi(
   options: ExportAiOptions,
 ): Promise<Blob> {
-  const { audioBuffer: srcBuffer, imageUrls, qualityId, range, onProgress, signal } = options
+  const {
+    audioBuffer: srcBuffer,
+    imageUrls,
+    qualityId,
+    range,
+    watermark,
+    credits,
+    onProgress,
+    signal,
+  } = options
   const quality = resolveQuality(qualityId)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
@@ -525,7 +661,7 @@ export async function exportVideoAi(
   const VIDEO_BITRATE = quality.videoBitrate
 
   // Pokud uživatel zvolil trim, oříznout buffer na požadovaný rozsah.
-  const audioBuffer = trimAudioBuffer(srcBuffer, range)
+  const trimmedBuffer = trimAudioBuffer(srcBuffer, range)
 
   const KEYFRAME_COUNT = 8
   const ATLAS_COLS = 4
@@ -535,7 +671,14 @@ export async function exportVideoAi(
     throw new Error('AI export potřebuje alespoň 2 hotové keyframes.')
   }
 
-  const totalFrames = Math.floor(audioBuffer.duration * EXPORT_FPS)
+  const mainFrames = Math.floor(trimmedBuffer.duration * EXPORT_FPS)
+  const timing = resolveCreditsTiming(credits, mainFrames, EXPORT_FPS)
+  const totalFrames = timing.introFrames + mainFrames + timing.outroFrames
+  const audioBuffer = padAudioBufferWithSilence(
+    trimmedBuffer,
+    timing.introDurationSec,
+    timing.outroDurationSec,
+  )
   const frameDuration = 1 / EXPORT_FPS
 
   // 1. Sestavit atlas — cell size proportional k exportu pro nejvyšší detail.
@@ -572,9 +715,9 @@ export async function exportVideoAi(
     atlasCtx.drawImage(img, col * cellWidth, row * cellHeight, cellWidth, cellHeight)
   }
 
-  // 2. Pre-compute features
+  // 2. Pre-compute features — pouze z hlavního audia (bez intro/outro silence).
   const features = await extractFeatures(
-    audioBuffer,
+    trimmedBuffer,
     EXPORT_FPS,
     (pct) => {
       onProgress({
@@ -589,10 +732,13 @@ export async function exportVideoAi(
   )
   if (signal?.aborted) throw new Error('Export zrušen uživatelem')
 
-  // 3. OffscreenCanvas + WebGPURenderer
+  // 3. Vizualizér canvas (WebGPU) + compositor canvas (2D overlay).
+  const vizCanvas = new OffscreenCanvas(EXPORT_WIDTH, EXPORT_HEIGHT)
   const offscreen = new OffscreenCanvas(EXPORT_WIDTH, EXPORT_HEIGHT)
+  const compositorCtx = offscreen.getContext('2d')
+  if (!compositorCtx) throw new Error('Compositor 2D context nedostupný')
   const renderer = new WebGPURenderer({
-    canvas: offscreen as unknown as HTMLCanvasElement,
+    canvas: vizCanvas as unknown as HTMLCanvasElement,
     antialias: true,
   })
   renderer.setSize(EXPORT_WIDTH, EXPORT_HEIGHT, false)
@@ -755,6 +901,7 @@ export async function exportVideoAi(
   await output.start()
 
   try {
+    // Audio padded (intro silence + main + outro silence).
     await audioSource.add(audioBuffer)
 
     const startWallTime = performance.now()
@@ -762,20 +909,56 @@ export async function exportVideoAi(
     for (let i = 0; i < totalFrames; i++) {
       if (signal?.aborted) throw new Error('Export zrušen uživatelem')
 
-      const fi = Math.min(i, features.totalFrames - 1)
-      uniforms.rms.value = features.rms[fi]
-      uniforms.audioTime.value = i / EXPORT_FPS
+      const videoTime = i / EXPORT_FPS
 
-      const beatNow = features.beat[fi]
-      beatDecay = Math.max(beatNow, beatDecay * 0.85)
-      uniforms.beat.value = beatDecay
+      // Vykreslit snímek podle fáze (intro / main / outro).
+      if (i < timing.mainStartFrame) {
+        const introT = videoTime
+        drawIntroFrame(
+          compositorCtx,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          introT,
+          timing.introDurationSec,
+          credits?.title ?? '',
+          credits?.artist,
+        )
+      } else if (i >= timing.outroStartFrame) {
+        const outroT = videoTime - timing.outroStartFrame / EXPORT_FPS
+        drawOutroFrame(
+          compositorCtx,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          outroT,
+          timing.outroDurationSec,
+        )
+      } else {
+        // Main fáze — uniforms posunuté o intro offset, keyframeIdx z trimmed audia.
+        const mainIdx = i - timing.mainStartFrame
+        const fi = Math.min(mainIdx, features.totalFrames - 1)
+        uniforms.rms.value = features.rms[fi]
+        uniforms.audioTime.value = mainIdx / EXPORT_FPS
 
-      const kfFloat = (i / EXPORT_FPS) * (KEYFRAME_COUNT - 1) /
-        audioBuffer.duration
-      uniforms.keyframeIdx.value = Math.min(KEYFRAME_COUNT - 1, kfFloat)
+        const beatNow = features.beat[fi]
+        beatDecay = Math.max(beatNow, beatDecay * 0.85)
+        uniforms.beat.value = beatDecay
 
-      await renderer.renderAsync(scene, camera)
-      await videoSource.add(i / EXPORT_FPS, frameDuration)
+        const kfFloat =
+          ((mainIdx / EXPORT_FPS) * (KEYFRAME_COUNT - 1)) /
+          trimmedBuffer.duration
+        uniforms.keyframeIdx.value = Math.min(KEYFRAME_COUNT - 1, kfFloat)
+
+        await renderer.renderAsync(scene, camera)
+        compositeMainFrame(
+          compositorCtx,
+          vizCanvas,
+          EXPORT_WIDTH,
+          EXPORT_HEIGHT,
+          watermark === true,
+        )
+      }
+
+      await videoSource.add(videoTime, frameDuration)
 
       if (i % 30 === 0 || i === totalFrames - 1) {
         const elapsedSec = (performance.now() - startWallTime) / 1000

@@ -16,6 +16,16 @@ import type { VisualizerHandle } from './types/visualizerHandle'
 type VisualizerMode = 'classic' | 'modern' | 'ai'
 
 /**
+ * `beforeinstallprompt` event není v lib.dom.d.ts (Chrome-specific PWA API),
+ * takže si definujeme minimální tvar pro typové bezpečí.
+ */
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: ReadonlyArray<string>
+  prompt(): Promise<void>
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
+/**
  * Tabulka klávesových zkratek — zobrazena v help overlay (Fáze 4.6).
  * Pořadí má smysl: nejčastější akce nahoře.
  */
@@ -45,6 +55,11 @@ function App() {
   const [visualizerMode, setVisualizerMode] =
     useState<VisualizerMode>('classic')
   const [showHelp, setShowHelp] = useState(false)
+  /** Zachycený `beforeinstallprompt` event pro PWA install (Fáze 4.11).
+   *  Pokud null, install není dostupný (už nainstalováno, nebo prohlížeč
+   *  install nepodporuje). */
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null)
   const { buffer, isLoading, error } = useAudioDecoder(audioFile)
 
   // Ref na aktuální vizualizér — imperative API pro keyboard shortcuts.
@@ -54,6 +69,35 @@ function App() {
   const visualizerContainerRef = useRef<HTMLDivElement | null>(null)
 
   const reset = () => setAudioFile(null)
+
+  // ─── PWA install prompt (Fáze 4.11) ──────────────────────────────────────
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      // Prohlížeč chce zobrazit svůj default install banner — my si ho
+      // chceme řídit sami přes tlačítko v top baru.
+      e.preventDefault()
+      setInstallPrompt(e as BeforeInstallPromptEvent)
+    }
+    const handleInstalled = () => {
+      setInstallPrompt(null)
+    }
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall)
+    window.addEventListener('appinstalled', handleInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
+      window.removeEventListener('appinstalled', handleInstalled)
+    }
+  }, [])
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return
+    await installPrompt.prompt()
+    const choice = await installPrompt.userChoice
+    if (choice.outcome === 'accepted') {
+      // Po install se prompt už nedá použít znovu — Chrome ho recykluje.
+      setInstallPrompt(null)
+    }
+  }
 
   const toggleFullscreen = () => {
     const el = visualizerContainerRef.current
@@ -181,7 +225,25 @@ function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Install tlačítko — viditelné jen když Chrome poskytl prompt event. */}
+            {installPrompt && (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="h-9 px-4 flex items-center gap-2 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
+                aria-label="Nainstalovat aplikaci"
+                title="Nainstalovat na plochu"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Nainstalovat
+              </button>
+            )}
+
             {/* Help tlačítko — otevře overlay s klávesovými zkratkami. */}
             <button
               type="button"
