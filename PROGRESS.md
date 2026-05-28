@@ -4,8 +4,12 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 3 plně dokončena 🎉
-**Aktuální bod:** 3.6 hotov → projekt má všechny tři vizualizéry + export
+**Aktuální fáze:** Fáze 3 dokončena 🎉 → **Fáze 4 plánovaná v dalším chatu**
+**Aktuální bod:** Hotová Fáze 3 + AI shader filmový upgrade (Ken Burns, parallax,
+light leaks, particles). Veřejná produkce na <https://dj-enda-pwa.vercel.app>.
+**Příští session:** Fáze 4 polish — viz `ROADMAP.md` sekce „Fáze 4".
+Doporučený první round: **4.1 + 4.2 + 4.3 (vyhledávání + oblíbené presety +
+audio trim)** jako quick wins balík.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -59,6 +63,18 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
     null, ukáže `<AudioUpload>`. Pokud vybrán soubor, ukáže název + velikost
     + tlačítko „Vybrat jiný soubor".
   - Ověřeno v Chrome: drag-drop, klik, validace, reset všechno funguje.
+- **Post-3.6 AI shader filmový upgrade** (varianta A pro AI hybrid):
+  - **Ken Burns continuous zoom** — `clamp(audioTime × 0.005, 0, 0.2)` přidává
+    plynulý zoom přes celou skladbu × audio RMS × beat punch zoom.
+  - **Slow drift pan** — `sin/cos(audioTime × 0.13/0.11) × 0.04/0.03`.
+  - **Per-keyframe parallax** — A a B mají pseudo-random pan offset
+    (přes `sin(idx × 2.3 + 0.7)`), při crossfade vzniká pocit hloubky.
+  - **Light leaks na beat** — radiální warm gradient `vec3(1.0, 0.7, 0.45)`
+    z pohyblivého středu, intenzita modulovaná beat.
+  - **Sparse procedural particles** — pseudo-noise dots (top 4 %), modulace RMS.
+  - **Identicky aktualizováno v `exportVideoAi()`** v `lib/export.ts`.
+  - Komentář v obou souborech upozorňuje: „Při změně shader logiky MUSÍ být
+    identicky aktualizován i druhý soubor".
 - **Fáze 3.4 + 3.5 + 3.6** Polish blok (overlay + cache + AI export):
   - **3.4 Overlay efekty** v `AiVisualizer.tsx` TSL shaderu:
     * **Vignette** — `smoothstep(0.35, 0.9, distFromCenter)` × vigStrength.
@@ -330,13 +346,32 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 - Nic. Čekáme na ověření 2.3a v Modern módu a souhlas s **2.3b** (Particle Flow).
 
-## Co je další
+## Co je další — Fáze 4 (plán pro nový Cowork chat)
 
-- **Commit + deploy** — push změn do GitHubu, Vercel auto-redeployne plnou
-  Fázi 3 na produkci.
-- Projekt je v zásadě **plně dotažený podle původního ROADMAPu**. Případné
-  další fáze (UI vylepšení, další presety, optimalizace) přijdou ad-hoc
-  podle reálných potřeb.
+**Fáze 4 = polish & UX vylepšení**, ne fundamentální nové features.
+Detail viz `ROADMAP.md` sekce „Fáze 4".
+
+**13 plánovaných bodů**, doporučené pořadí:
+
+1. **Round 1 — Quick wins (doporučený start):**
+   - 4.1 Vyhledávání v Classic preset dropdown
+   - 4.2 Oblíbené presety (Classic + Modern, localStorage)
+   - 4.3 Audio trim/range pro export
+
+2. **Round 2 — Desktop layout refactor:**
+   - 4.5 **Desktop wide layout + plná responzivita** (velký redesign,
+     priorita podle uživatele — viz feedback memory `feedback-desktop-wide-layout.md`)
+
+3. **Round 3 — UX dotahy:** 4.4, 4.6, 4.7
+4. **Round 4 — Power features:** 4.8, 4.9, 4.10
+5. **Round 5 — Nice to have:** 4.11, 4.12, 4.13
+
+### Klíčový hint pro budoucí session
+
+Uživatel explicitně rozhodl, že **prioritou je desktop wide layout**
+(MacBook M4 primary device), ne mobilní. Aplikace má využít celou šířku
+monitoru — žádný úzký centrovaný column `max-w-xl`. Plný responzivní
+design s breakpointy. Viz memory file + AGENTS.md sekce „Design / Layout".
 
 ## Známé bugy / problémy
 

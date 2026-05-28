@@ -97,6 +97,62 @@ overlay přidává polish.
 
 ---
 
+---
+
+## Fáze 4 — Polish & UX vylepšení (plánovaná, příští session)
+
+Cíl: Dotáhnout uživatelskou zkušenost. Žádné nové fundamentální features,
+spíš dotahování existujících. Implementace v dalším Cowork chatu.
+
+Pořadí je doporučené, ale flexibilní podle reálných potřeb. Pro každý bod:
+S = malá změna (~1 h), M = středně velká (~2–3 h), L = velká (~5+ h).
+
+### Quick wins (priorita)
+
+| # | Bod | Velikost |
+|---|---|---|
+| 4.1 | Vyhledávání v Classic preset dropdown (filter podle názvu, fuzzy match) | S |
+| 4.2 | Oblíbené presety (Classic + Modern) — hvězdička ikonka, localStorage, sekce „Oblíbené" v dropdownu | S |
+| 4.3 | Audio trim/range pro export — dva slidery (start/end) v ExportButton confirm dialogu | M |
+
+### Střední priorita
+
+| # | Bod | Velikost |
+|---|---|---|
+| 4.4 | Custom prompt per AI keyframe — modal s textovým inputem v každém slotu | M |
+| 4.5 | **Desktop wide layout + plná responzivita** — refactor App.tsx na grid (sidebar + main canvas), využití celé šířky monitoru, breakpointy pro mobil | L |
+| 4.6 | Keyboard shortcuts — Space = play/pause, N/P = next/prev preset, R = random, F = fullscreen, / = focus search | S |
+| 4.7 | Reset AI cache tlačítko + indikátor využití (kolik položek je cachováno) | S |
+
+### Větší upgrade
+
+| # | Bod | Velikost |
+|---|---|---|
+| 4.8 | Preview thumbnail po exportu — první/middle/last snímek inline + tlačítka „Otevřít" / „Sdílet" | M |
+| 4.9 | Více Modern presetů (4–6 nových): wave field, plasma, tunnel, terrain mesh, fractal noise | L |
+| 4.10 | HF model dropdown — Flux Schnell / Flux Dev / SDXL Turbo / Custom model ID input | S |
+
+### Nice to have (low priority)
+
+| # | Bod | Velikost |
+|---|---|---|
+| 4.11 | PWA install prompt UI — vlastní tlačítko „Nainstaluj na plochu" místo browser default | S |
+| 4.12 | Titulek/credits screen volitelně — 3 s intro „Track: X by Y" + outro „Made with DJ Enda" před exportem | M |
+| 4.13 | Watermark volitelný — polopropustné logo v rohu pro brandování | S |
+
+### Doporučené pořadí implementace
+
+1. **Round 1 — Quick wins**: 4.1 + 4.2 + 4.3 (cca 4 h)
+2. **Round 2 — Desktop layout refactor**: 4.5 (velký bod, samostatná session)
+3. **Round 3 — UX dotahy**: 4.4 + 4.6 + 4.7
+4. **Round 4 — Power features**: 4.8 + 4.9 + 4.10
+5. **Round 5 — Nice to have**: 4.11 + 4.12 + 4.13
+
+Pro každý round samostatná session s vibe-coding workflow (discuss-before-code,
+testovat po každém kroku, commit + push, ověřit deploy).
+
+---
+
 ## Co je *mimo* roadmap (vědomé volby)
 
 - ➖ Real-time diffusion video v prohlížeči (Stable Diffusion Turbo) — v 2026

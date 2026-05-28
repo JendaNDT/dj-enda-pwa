@@ -75,6 +75,17 @@ Tyhle **potřebují** „piš":
 | AI (volitelné) | `@fal-ai/serverless-client` | $20 free credits; Wan 2.5 ~$0.05/s |
 | Deploy | Vercel nebo Netlify | vyžaduje COOP/COEP hlavičky pro SharedArrayBuffer |
 
+### Design / Layout pravidla
+
+- **Desktop wide layout je priorita** — uživatel pracuje primárně na MacBook M4
+  s velkým displayem. Aplikace má **využít celou šířku monitoru**, ne se omezit
+  na úzký centrovaný column (původní `max-w-xl` byl vhodný pro MVP, ale pro
+  Fázi 4 už ne).
+- **Plně responzivní** — na `>= lg` (1024 px) rozprostřít side-by-side
+  layout (sidebar + vizualizér widescreen), na `< md` (768 px) stack vertikálně.
+- **Vizualizér canvas může být široký** — minimum 60% width na desktopu,
+  ideálně se přibližuje native 16:9.
+
 ### Důležitá rozhodnutí (a proč)
 
 - **Mediabunny místo mp4-muxer.** Autor (Vanilagy) označil mp4-muxer za
@@ -151,6 +162,11 @@ než ho upravíš. Nikdy tiše neuprav test, aby procházel.
 Sem patří **neobvyklá** zjištění, na která narazíme během vývoje a která by
 příští session zase trefila. Formát: krátký bullet point + datum.
 
+- **2026-05-28** — `AiVisualizer.tsx` shader logika je **duplikovaná v `exportVideoAi()`**
+  v `lib/export.ts`. Při jakékoliv změně TSL grafu (Fn() body) MUSÍ být obě
+  místa aktualizována identicky — jinak budou live preview a exported video
+  vypadat jinak. V obou souborech je komentář „MIRROR THIS". Pro Fázi 4
+  zvážit extract do shared utility funkce.
 - **2026-05-28** — **HuggingFace Inference API endpoint změnil** (deprecated
   ke konci 2025). Starý `https://api-inference.huggingface.co/models/{id}`
   hází CORS error v prohlížeči. Nový endpoint: `https://router.huggingface.co/hf-inference/models/{id}`.
