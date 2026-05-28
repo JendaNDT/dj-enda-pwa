@@ -571,37 +571,65 @@ export async function exportVideoAi(
   const colsF = tsl.float(ATLAS_COLS)
 
   const material = new wbg.MeshBasicNodeMaterial({ side: THREE.DoubleSide })
+  // Pozn.: Tato logika MUSÍ být identická s `AiVisualizer.tsx` shader.
   material.colorNode = tsl.Fn(() => {
     const baseUv = tsl.uv()
     const centered = baseUv.sub(tsl.vec2(0.5, 0.5))
-    const zoom = uniforms.rms.mul(0.06).add(1.0)
-    const wobble = tsl.vec2(
-      tsl.sin(uniforms.audioTime.mul(1.7)).mul(0.008),
-      tsl.sin(uniforms.audioTime.mul(1.3)).mul(0.008),
-    )
-    const localUv = centered.div(zoom).add(tsl.vec2(0.5, 0.5)).add(wobble)
 
+    // Ken Burns
+    const slowZoom = tsl
+      .clamp(uniforms.audioTime.mul(0.005), tsl.float(0), tsl.float(0.2))
+      .add(1.0)
+    const audioZoom = uniforms.rms.mul(0.06).add(1.0)
+    const beatZoom = uniforms.beat.mul(0.05).add(1.0)
+    const totalZoom = slowZoom.mul(audioZoom).mul(beatZoom)
+
+    const driftX = tsl.sin(uniforms.audioTime.mul(0.13)).mul(0.04)
+    const driftY = tsl.cos(uniforms.audioTime.mul(0.11)).mul(0.03)
+    const wobbleX = tsl.sin(uniforms.audioTime.mul(1.7)).mul(0.006)
+    const wobbleY = tsl.sin(uniforms.audioTime.mul(1.3)).mul(0.006)
+
+    const localUv = centered
+      .div(totalZoom)
+      .add(tsl.vec2(0.5, 0.5))
+      .add(tsl.vec2(driftX, driftY))
+      .add(tsl.vec2(wobbleX, wobbleY))
+
+    // Crossfade s parallax
     const idx = uniforms.keyframeIdx.clamp(0, maxIdx)
     const idxA = idx.floor()
     const idxB = idxA.add(1.0).min(maxIdx)
     const t = idx.sub(idxA)
 
+    const parallaxA = tsl.vec2(
+      tsl.sin(idxA.mul(2.3).add(0.7)).mul(0.025),
+      tsl.cos(idxA.mul(1.9).add(1.3)).mul(0.02),
+    )
+    const parallaxB = tsl.vec2(
+      tsl.sin(idxB.mul(2.3).add(0.7)).mul(0.025),
+      tsl.cos(idxB.mul(1.9).add(1.3)).mul(0.02),
+    )
+
+    const uvA_local = localUv.add(parallaxA)
+    const uvB_local = localUv.add(parallaxB)
+
     const colA = idxA.mod(colsF)
     const rowA = idxA.div(colsF).floor()
     const uvA = tsl.vec2(
-      colA.add(localUv.x).mul(cellWidthN),
-      rowA.add(localUv.y).mul(cellHeightN),
+      colA.add(uvA_local.x).mul(cellWidthN),
+      rowA.add(uvA_local.y).mul(cellHeightN),
     )
     const colB = idxB.mod(colsF)
     const rowB = idxB.div(colsF).floor()
     const uvB = tsl.vec2(
-      colB.add(localUv.x).mul(cellWidthN),
-      rowB.add(localUv.y).mul(cellHeightN),
+      colB.add(uvB_local.x).mul(cellWidthN),
+      rowB.add(uvB_local.y).mul(cellHeightN),
     )
     const colorA = textureNode.sample(uvA).rgb
     const colorB = textureNode.sample(uvB).rgb
     const baseColor = tsl.mix(colorA, colorB, t)
 
+    // Brightness + vignette
     const brightness = uniforms.beat.mul(0.35).add(1.0)
     const brightened = baseColor.mul(brightness)
 
@@ -610,13 +638,37 @@ export async function exportVideoAi(
     const vignette = tsl.oneMinus(
       tsl.smoothstep(tsl.float(0.35), tsl.float(0.9), distFromCenter).mul(vigStrength),
     )
+    const vignetted = brightened.mul(vignette)
 
+    // Light leaks
+    const leakCenter = tsl.vec2(
+      tsl.sin(uniforms.audioTime.mul(0.3)).mul(0.3).add(0.5),
+      tsl.cos(uniforms.audioTime.mul(0.25)).mul(0.3).add(0.5),
+    )
+    const distFromLeak = tsl.length(baseUv.sub(leakCenter))
+    const leakIntensity = tsl
+      .oneMinus(tsl.smoothstep(tsl.float(0.0), tsl.float(0.45), distFromLeak))
+      .mul(uniforms.beat)
+      .mul(0.5)
+    const leakColor = tsl.vec3(1.0, 0.7, 0.45).mul(leakIntensity)
+    const withLeak = vignetted.add(leakColor)
+
+    // Particles
+    const partSeed = tsl
+      .sin(baseUv.x.mul(220.0).add(uniforms.audioTime.mul(1.5)))
+      .mul(tsl.sin(baseUv.y.mul(190.0).add(uniforms.audioTime.mul(1.1))))
+    const partRaw = tsl.fract(partSeed.mul(53.7))
+    const partVisible = tsl.smoothstep(tsl.float(0.96), tsl.float(1.0), partRaw)
+    const partAlpha = partVisible.mul(uniforms.rms.add(0.3)).mul(0.5)
+    const withParticles = withLeak.add(tsl.vec3(partAlpha, partAlpha, partAlpha))
+
+    // Grain
     const grainSeed = tsl.sin(
       baseUv.x.mul(127.1).add(baseUv.y.mul(311.7)).add(uniforms.audioTime.mul(43.7)),
     )
     const grain = tsl.fract(grainSeed.mul(43758.5453)).mul(0.06).sub(0.03)
 
-    return brightened.mul(vignette).add(tsl.vec3(grain, grain, grain))
+    return withParticles.add(tsl.vec3(grain, grain, grain))
   })()
 
   const mesh = new THREE.Mesh(geometry, material)

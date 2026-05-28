@@ -254,7 +254,7 @@ function App() {
       )}
 
       <footer className="mt-16 flex items-center gap-3 text-xs text-neutral-600">
-        <span>Verze 0.4.0 · Fáze 3 dokončena</span>
+        <span>Verze 0.4.1 · AI shader filmový upgrade</span>
         <span className="h-1 w-1 rounded-full bg-neutral-700" />
         <a
           href="https://github.com/JendaNDT/dj-enda-pwa"

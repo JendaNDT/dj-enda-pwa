@@ -10,11 +10,13 @@ import {
   texture,
   mix,
   sin,
+  cos,
   float,
   length,
   oneMinus,
   smoothstep,
   fract,
+  clamp,
 } from 'three/tsl'
 import { extractFeatures, type AudioFeatures } from '../lib/audioFeatures'
 
@@ -199,66 +201,113 @@ export function AiVisualizer({ audioBuffer, imageUrls }: AiVisualizerProps) {
           await import('three/webgpu')
         ).MeshBasicNodeMaterial({ side: THREE.DoubleSide })
 
+        // Pozn.: Při změně shader logiky MUSÍ být identicky aktualizován
+        // i `exportVideoAi()` v `lib/export.ts`.
         nodeMaterial.colorNode = Fn(() => {
           const baseUv = uv()
-
-          // RMS zoom-in efekt (mírný puls do středu na bas).
           const centered = baseUv.sub(vec2(0.5, 0.5))
-          const zoom = uniforms.rms.mul(0.06).add(1.0)
-          // Vlastní mírný wobble podle audioTime
-          const wobble = vec2(
-            sin(uniforms.audioTime.mul(1.7)).mul(0.008),
-            sin(uniforms.audioTime.mul(1.3)).mul(0.008),
-          )
-          const localUv = centered.div(zoom).add(vec2(0.5, 0.5)).add(wobble)
 
-          // Crossfade mezi dvěma sousedními keyframes
+          // ─── Ken Burns: continuous zoom + slow drift + audio reactive ──
+          const slowZoom = clamp(
+            uniforms.audioTime.mul(0.005),
+            float(0),
+            float(0.2),
+          ).add(1.0) // 1.0 → 1.2 přes ~40 s
+          const audioZoom = uniforms.rms.mul(0.06).add(1.0)
+          const beatZoom = uniforms.beat.mul(0.05).add(1.0)
+          const totalZoom = slowZoom.mul(audioZoom).mul(beatZoom)
+
+          const driftX = sin(uniforms.audioTime.mul(0.13)).mul(0.04)
+          const driftY = cos(uniforms.audioTime.mul(0.11)).mul(0.03)
+          const wobbleX = sin(uniforms.audioTime.mul(1.7)).mul(0.006)
+          const wobbleY = sin(uniforms.audioTime.mul(1.3)).mul(0.006)
+
+          const localUv = centered
+            .div(totalZoom)
+            .add(vec2(0.5, 0.5))
+            .add(vec2(driftX, driftY))
+            .add(vec2(wobbleX, wobbleY))
+
+          // ─── Crossfade s per-keyframe parallax ─────────────────────────
           const idx = uniforms.keyframeIdx.clamp(0, maxIdx)
           const idxA = idx.floor()
           const idxB = idxA.add(1.0).min(maxIdx)
           const t = idx.sub(idxA)
 
-          // UV pro slot A
+          // Parallax: každý keyframe má svůj pseudo-random pan směr
+          const parallaxA = vec2(
+            sin(idxA.mul(2.3).add(0.7)).mul(0.025),
+            cos(idxA.mul(1.9).add(1.3)).mul(0.02),
+          )
+          const parallaxB = vec2(
+            sin(idxB.mul(2.3).add(0.7)).mul(0.025),
+            cos(idxB.mul(1.9).add(1.3)).mul(0.02),
+          )
+
+          const uvA_local = localUv.add(parallaxA)
+          const uvB_local = localUv.add(parallaxB)
+
           const colA = idxA.mod(colsF)
           const rowA = idxA.div(colsF).floor()
           const uvA = vec2(
-            colA.add(localUv.x).mul(cellWidthN),
-            rowA.add(localUv.y).mul(cellHeightN),
+            colA.add(uvA_local.x).mul(cellWidthN),
+            rowA.add(uvA_local.y).mul(cellHeightN),
           )
-
-          // UV pro slot B
           const colB = idxB.mod(colsF)
           const rowB = idxB.div(colsF).floor()
           const uvB = vec2(
-            colB.add(localUv.x).mul(cellWidthN),
-            rowB.add(localUv.y).mul(cellHeightN),
+            colB.add(uvB_local.x).mul(cellWidthN),
+            rowB.add(uvB_local.y).mul(cellHeightN),
           )
 
           const colorA = textureNode.sample(uvA).rgb
           const colorB = textureNode.sample(uvB).rgb
           const baseColor = mix(colorA, colorB, t)
 
-          // Beat brightness boost
+          // ─── Brightness + beat boost ───────────────────────────────────
           const brightness = uniforms.beat.mul(0.35).add(1.0)
           const brightened = baseColor.mul(brightness)
 
-          // Vignette — tmavší ke krajům, beat ji rozsvítí.
+          // ─── Vignette (tmavší ke krajům, beat ji rozsvítí) ─────────────
           const distFromCenter = length(baseUv.sub(vec2(0.5, 0.5)))
-          const vigStrength = oneMinus(
-            uniforms.beat.mul(0.4).add(0.55),
-          ) // 0.15 na peak beat, 0.55 v klidu
+          const vigStrength = oneMinus(uniforms.beat.mul(0.4).add(0.55))
           const vignette = oneMinus(
             smoothstep(float(0.35), float(0.9), distFromCenter).mul(vigStrength),
           )
+          const vignetted = brightened.mul(vignette)
 
-          // Film grain — pseudo-noise v UV × audioTime.
-          // Drobné modulace pro filmový pocit (~3% intenzity).
+          // ─── Light leaks na beat (warm radial gradient) ────────────────
+          const leakCenter = vec2(
+            sin(uniforms.audioTime.mul(0.3)).mul(0.3).add(0.5),
+            cos(uniforms.audioTime.mul(0.25)).mul(0.3).add(0.5),
+          )
+          const distFromLeak = length(baseUv.sub(leakCenter))
+          const leakIntensity = oneMinus(
+            smoothstep(float(0.0), float(0.45), distFromLeak),
+          )
+            .mul(uniforms.beat)
+            .mul(0.5)
+          const leakColor = vec3(1.0, 0.7, 0.45).mul(leakIntensity)
+          const withLeak = vignetted.add(leakColor)
+
+          // ─── Sparse procedural particles ───────────────────────────────
+          const partSeed = sin(
+            baseUv.x.mul(220.0).add(uniforms.audioTime.mul(1.5)),
+          ).mul(sin(baseUv.y.mul(190.0).add(uniforms.audioTime.mul(1.1))))
+          const partRaw = fract(partSeed.mul(53.7))
+          const partVisible = smoothstep(float(0.96), float(1.0), partRaw)
+          const partAlpha = partVisible.mul(uniforms.rms.add(0.3)).mul(0.5)
+          const withParticles = withLeak.add(
+            vec3(partAlpha, partAlpha, partAlpha),
+          )
+
+          // ─── Film grain ────────────────────────────────────────────────
           const grainSeed = sin(
             baseUv.x.mul(127.1).add(baseUv.y.mul(311.7)).add(uniforms.audioTime.mul(43.7)),
           )
           const grain = fract(grainSeed.mul(43758.5453)).mul(0.06).sub(0.03)
 
-          return brightened.mul(vignette).add(vec3(grain, grain, grain))
+          return withParticles.add(vec3(grain, grain, grain))
         })()
 
         const mesh = new THREE.Mesh(geometry, nodeMaterial)
