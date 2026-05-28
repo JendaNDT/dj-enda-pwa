@@ -251,13 +251,42 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
           className="w-full h-full"
         />
 
-        {/* Overlay pro idle a ended stavy */}
+        {/* Overlay pro idle a ended stavy — ambient gradient + pulsující DJE
+            logo (Fáze 5.6). Lepší než čistě černý canvas. */}
         {(status === 'idle' || status === 'ended') && !error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-neutral-950 via-purple-950/30 to-neutral-950">
+            <svg
+              viewBox="0 0 48 48"
+              className="h-16 w-16 mb-4 opacity-70 animate-pulse"
+              aria-hidden="true"
+            >
+              <rect
+                x="2"
+                y="2"
+                width="44"
+                height="44"
+                rx="10"
+                fill="#0a0a0a"
+                stroke="#9333ea"
+                strokeWidth="2"
+              />
+              <circle cx="36" cy="12" r="2.5" fill="#9333ea" />
+              <text
+                x="24"
+                y="32"
+                textAnchor="middle"
+                fontSize="16"
+                fontFamily="system-ui, -apple-system, sans-serif"
+                fontWeight="700"
+                fill="#fafafa"
+              >
+                DJE
+              </text>
+            </svg>
             <button
               type="button"
               onClick={start}
-              className="px-6 py-3 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors"
+              className="px-6 py-3 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors shadow-lg shadow-purple-900/40"
             >
               {status === 'ended' ? 'Spustit znovu' : 'Spustit náhled'}
             </button>
@@ -265,68 +294,59 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
         )}
       </div>
 
-      {/* Control panel — viditelný jen když běží nebo je pozastaveno */}
-      {isRunning && (
-        <div className="mt-4 flex items-center gap-3 flex-wrap">
-          <button
-            type="button"
-            onClick={togglePlayPause}
-            className="h-10 w-10 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-colors"
-            aria-label={status === 'playing' ? 'Pauza' : 'Přehrát'}
-          >
-            {status === 'playing' ? (
-              // Pause icon
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                <rect x="6" y="5" width="4" height="14" rx="1" />
-                <rect x="14" y="5" width="4" height="14" rx="1" />
-              </svg>
-            ) : (
-              // Play icon
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
-          </button>
-
-          <PresetCombobox
-            ref={comboboxRef}
-            options={presetOptions}
-            value={currentPreset}
-            onChange={changePreset}
-            favorites={favorites}
-            onToggleFavorite={toggleFavorite}
-            className="flex-1 min-w-0"
-          />
-
-
-          <div className="flex items-center gap-2 min-w-[140px]">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4 text-neutral-400 shrink-0"
-              fill="currentColor"
-            >
-              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 16.5 12z" />
+      {/* Control panel — vždy viditelný (Fáze 5.2).
+          V idle stavu: play tlačítko spustí náhled, preset combobox a volume
+          slider jsou aktivní (uživatel může vybrat preset / nastavit volume
+          ještě před prvním spuštěním). */}
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={isRunning ? togglePlayPause : start}
+          className="h-10 w-10 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-colors"
+          aria-label={status === 'playing' ? 'Pauza' : 'Přehrát'}
+        >
+          {status === 'playing' ? (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+              <rect x="6" y="5" width="4" height="14" rx="1" />
+              <rect x="14" y="5" width="4" height="14" rx="1" />
             </svg>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={volume}
-              onChange={(e) => changeVolume(parseFloat(e.target.value))}
-              className="flex-1 accent-purple-500"
-              aria-label="Hlasitost"
-            />
-          </div>
-        </div>
-      )}
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
+        </button>
 
-      {/* Idle / ended preset info (mimo control panel) */}
-      {!isRunning && currentPreset && (
-        <div className="mt-3 text-xs text-neutral-500">
-          Preset: <span className="text-neutral-400">{currentPreset}</span>
+        <PresetCombobox
+          ref={comboboxRef}
+          options={presetOptions}
+          value={currentPreset}
+          onChange={changePreset}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
+          className="flex-1 min-w-0"
+        />
+
+        <div className="flex items-center gap-2 min-w-[140px]">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4 text-neutral-400 shrink-0"
+            fill="currentColor"
+          >
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 16.5 12z" />
+          </svg>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={(e) => changeVolume(parseFloat(e.target.value))}
+            className="flex-1 accent-purple-500"
+            aria-label="Hlasitost"
+          />
         </div>
-      )}
+      </div>
 
       {error && (
         <div className="mt-3 px-3 py-2 rounded bg-red-950/50 border border-red-800 text-sm text-red-200">

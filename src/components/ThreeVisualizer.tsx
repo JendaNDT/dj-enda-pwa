@@ -440,11 +440,39 @@ export const ThreeVisualizer = forwardRef<VisualizerHandle, ThreeVisualizerProps
         )}
 
         {(status === 'idle' || status === 'ended') && !error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-neutral-950 via-purple-950/30 to-neutral-950">
+            <svg
+              viewBox="0 0 48 48"
+              className="h-16 w-16 mb-4 opacity-70 animate-pulse"
+              aria-hidden="true"
+            >
+              <rect
+                x="2"
+                y="2"
+                width="44"
+                height="44"
+                rx="10"
+                fill="#0a0a0a"
+                stroke="#9333ea"
+                strokeWidth="2"
+              />
+              <circle cx="36" cy="12" r="2.5" fill="#9333ea" />
+              <text
+                x="24"
+                y="32"
+                textAnchor="middle"
+                fontSize="16"
+                fontFamily="system-ui, -apple-system, sans-serif"
+                fontWeight="700"
+                fill="#fafafa"
+              >
+                DJE
+              </text>
+            </svg>
             <button
               type="button"
               onClick={start}
-              className="px-6 py-3 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors"
+              className="px-6 py-3 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors shadow-lg shadow-purple-900/40"
             >
               {status === 'ended' ? 'Spustit znovu' : 'Spustit náhled'}
             </button>
@@ -452,11 +480,14 @@ export const ThreeVisualizer = forwardRef<VisualizerHandle, ThreeVisualizerProps
         )}
       </div>
 
-      {isRunning && (
+      {/* Control panel — vždy viditelný (Fáze 5.2).
+          V idle stavu: play tlačítko spustí náhled, preset select a volume
+          slider jsou aktivní (lze nastavit ještě před spuštěním). */}
+      {status !== 'analyzing' && (
         <div className="mt-4 flex items-center gap-3 flex-wrap">
           <button
             type="button"
-            onClick={togglePlayPause}
+            onClick={isRunning ? togglePlayPause : start}
             className="h-10 w-10 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-colors"
             aria-label={status === 'playing' ? 'Pauza' : 'Přehrát'}
           >

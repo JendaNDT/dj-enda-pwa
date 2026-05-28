@@ -55,6 +55,8 @@ function App() {
   const [visualizerMode, setVisualizerMode] =
     useState<VisualizerMode>('classic')
   const [showHelp, setShowHelp] = useState(false)
+  /** Sidebar karta — collapse / expand tech-spec detailů (Fáze 5.4). */
+  const [showAudioDetails, setShowAudioDetails] = useState<boolean>(false)
   /** Zachycený `beforeinstallprompt` event pro PWA install (Fáze 4.11).
    *  Pokud null, install není dostupný (už nainstalováno, nebo prohlížeč
    *  install nepodporuje). */
@@ -290,8 +292,9 @@ function App() {
               <AudioUpload onFileSelected={setAudioFile} />
             </div>
           ) : (
-            // S audio: grid (lg) / stack (< lg).
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
+            // S audio: grid (md+) / stack (< md). Breakpoint snížen na md
+            // (768 px) aby iPad portrait dostal wide layout — Fáze 5.3.
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_340px] gap-6 items-start">
               {/* MAIN COLUMN — mode toggle + vizualizér + (Classic/Modern: export under canvas not used; export is in sidebar) */}
               <div className="space-y-4 min-w-0">
                 {/* Loading state */}
@@ -311,13 +314,16 @@ function App() {
                   </div>
                 )}
 
-                {/* Mode toggle nad vizualizérem (kontextově patří k němu). */}
+                {/* Mode toggle + popisek pod aktivním režimem (5.1).
+                    Subtitle vysvětluje, co aktuální mode dělá — pro uživatele,
+                    co nezná Butterchurn / Three.js / HF FLUX terminologii. */}
                 {buffer && (
-                  <div className="flex justify-center lg:justify-start">
+                  <div className="flex flex-col items-center md:items-start gap-2">
                     <div className="flex gap-1 p-1 rounded-full bg-neutral-900 border border-neutral-800 flex-wrap">
                       <button
                         type="button"
                         onClick={() => setVisualizerMode('classic')}
+                        title="Klasické Milkdrop presety (Butterchurn), ~150 efektů"
                         className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
                           visualizerMode === 'classic'
                             ? 'bg-purple-600 text-white'
@@ -329,6 +335,7 @@ function App() {
                       <button
                         type="button"
                         onClick={() => setVisualizerMode('modern')}
+                        title="Vlastní WebGPU shadery (Three.js TSL), 6 efektů"
                         className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
                           visualizerMode === 'modern'
                             ? 'bg-purple-600 text-white'
@@ -340,6 +347,7 @@ function App() {
                       <button
                         type="button"
                         onClick={() => setVisualizerMode('ai')}
+                        title="AI generované obrazy přes HuggingFace + shader crossfade"
                         className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
                           visualizerMode === 'ai'
                             ? 'bg-purple-600 text-white'
@@ -349,6 +357,14 @@ function App() {
                         AI Hybrid
                       </button>
                     </div>
+                    <p className="text-xs text-neutral-500 max-w-md text-center md:text-left">
+                      {visualizerMode === 'classic' &&
+                        'Klasické Milkdrop presety — ~150 efektů, esteticky preferované, real-time export.'}
+                      {visualizerMode === 'modern' &&
+                        'Vlastní WebGPU shadery — 6 efektů (Sphere, Particles, Kaleidoscope, Wave, Plasma, Tunnel), 3-5× rychlejší export.'}
+                      {visualizerMode === 'ai' &&
+                        'AI obrazy z HuggingFace (Flux) + shader crossfade. Vyžaduje HF token. Filmově vypadající výstup.'}
+                    </p>
                   </div>
                 )}
 
@@ -383,7 +399,7 @@ function App() {
               </div>
 
               {/* SIDEBAR — kompaktní karta soubor + audio data, pak export controls. */}
-              <aside className="space-y-4 lg:sticky lg:top-6">
+              <aside className="space-y-4 md:sticky md:top-6">
                 {/* Sloučená karta: soubor + audio data */}
                 <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors hover:border-neutral-700">
                   <div className="text-xs uppercase tracking-wider text-neutral-500">
@@ -398,27 +414,56 @@ function App() {
                   </div>
 
                   {buffer && (
-                    <dl className="mt-4 pt-4 border-t border-neutral-800 grid grid-cols-2 gap-y-2 text-xs">
-                      <dt className="text-neutral-500">Délka</dt>
-                      <dd className="text-neutral-100 font-medium text-right">
-                        {formatDuration(buffer.duration)}
-                      </dd>
+                    <div className="mt-4 pt-4 border-t border-neutral-800">
+                      {/* Délka je vždy viditelná (důležitý údaj pro uživatele). */}
+                      <div className="flex justify-between text-xs">
+                        <span className="text-neutral-500">Délka</span>
+                        <span className="text-neutral-100 font-medium">
+                          {formatDuration(buffer.duration)}
+                        </span>
+                      </div>
 
-                      <dt className="text-neutral-500">Sample rate</dt>
-                      <dd className="text-neutral-100 font-medium text-right">
-                        {formatCount(buffer.sampleRate)} Hz
-                      </dd>
+                      {/* Tech detaily (sample rate atd.) v collapsable sekci — Fáze 5.4. */}
+                      <button
+                        type="button"
+                        onClick={() => setShowAudioDetails((s) => !s)}
+                        className="mt-3 flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+                        aria-expanded={showAudioDetails}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className={`h-3 w-3 transition-transform ${
+                            showAudioDetails ? 'rotate-90' : ''
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                        {showAudioDetails ? 'Skrýt detaily' : 'Detaily'}
+                      </button>
+                      {showAudioDetails && (
+                        <dl className="mt-2 grid grid-cols-2 gap-y-2 text-xs">
+                          <dt className="text-neutral-500">Sample rate</dt>
+                          <dd className="text-neutral-100 font-medium text-right">
+                            {formatCount(buffer.sampleRate)} Hz
+                          </dd>
 
-                      <dt className="text-neutral-500">Kanály</dt>
-                      <dd className="text-neutral-100 font-medium text-right">
-                        {describeChannels(buffer.numberOfChannels)}
-                      </dd>
+                          <dt className="text-neutral-500">Kanály</dt>
+                          <dd className="text-neutral-100 font-medium text-right">
+                            {describeChannels(buffer.numberOfChannels)}
+                          </dd>
 
-                      <dt className="text-neutral-500">Vzorky</dt>
-                      <dd className="text-neutral-100 font-medium text-right">
-                        {formatCount(buffer.length)}
-                      </dd>
-                    </dl>
+                          <dt className="text-neutral-500">Vzorky</dt>
+                          <dd className="text-neutral-100 font-medium text-right">
+                            {formatCount(buffer.length)}
+                          </dd>
+                        </dl>
+                      )}
+                    </div>
                   )}
 
                   <button

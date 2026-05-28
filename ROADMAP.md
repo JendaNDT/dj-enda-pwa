@@ -142,6 +142,47 @@ S = malá změna (~1 h), M = středně velká (~2–3 h), L = velká (~5+ h).
 | 4.14 | Modern preset Terrain Mesh (vertex displacement na ploché ploše, audio-driven height map) | M |
 | 4.15 | Modern preset Fractal Noise (mandelbrot/julia-like iterace, beat zoom) | M |
 
+---
+
+## Fáze 5 — UX polish (plánovaná)
+
+Cíl: Dotáhnout uživatelskou zkušenost na profi level. Žádné nové core features,
+ale aplikace má **působit srozumitelně od první vteřiny**, mít čisté defaulty
+a delight detaily. Rozdělené do 4 roundů podle dopadu a velikosti.
+
+### Round 1 — Quick wins (S body)
+
+| # | Bod | Velikost |
+|---|---|---|
+| 5.1 | Mode toggle subtitles (Classic/Modern/AI s popiskem co to je) ✅ done | S |
+| 5.2 | Volume slider vždy viditelný (nepřekvapovat až po spuštění) ✅ done | S |
+| 5.3 | Mobile breakpoint lg → md (iPad portrait dostane wide layout) ✅ done | S |
+| 5.4 | Audio data collapsable v sidebaru (tech-spec dump schovat) ✅ done | S |
+| 5.5 | AI mode skrýt token warning po nastavení (úspěšný stav stačí) ✅ done | S |
+| 5.6 | Empty visualizer state polish (ambient gradient + DJE pulse) ✅ done | S |
+
+### Round 2 — Defaults & onboarding
+
+| # | Bod | Velikost |
+|---|---|---|
+| 5.7 | Export sekce „Pokročilé nastavení" collapse (trim/credits/watermark) | M |
+| 5.8 | Toast notifikace systém + použít pro favorites/cache/token | M |
+| 5.9 | Onboarding tooltip „Stiskni ? pro shortcuts" (one-time, localStorage) | S |
+
+### Round 3 — Hero & live preview
+
+| # | Bod | Velikost |
+|---|---|---|
+| 5.10 | Pre-upload hero showcase (3 looping ukázky Classic/Modern/AI) | L |
+| 5.11 | Live preview hned po uploadu (idle vizualizér bez audio) | M |
+
+### Round 4 — Ambiciózní features (každý samostatná session)
+
+| # | Bod | Velikost |
+|---|---|---|
+| 5.12 | Comparison mode (3 vizualizéry side-by-side, sdílený audio source) | L |
+| 5.13 | Preset thumbnails v Classic dropdown (background gen + IndexedDB cache) | L |
+
 ### Doporučené pořadí implementace
 
 1. **Round 1 — Quick wins**: 4.1 + 4.2 + 4.3 (cca 4 h)

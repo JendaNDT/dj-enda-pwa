@@ -4,15 +4,14 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** **Fáze 4 KOMPLETNĚ HOTOVÁ** 🎯
-**Aktuální bod:** Všech 13 původně plánovaných bodů 4.1–4.13 hotových.
-Round 5 dotáhl PWA install prompt, intro/outro credits a watermark.
-Modern má 6 presetů, Classic + Modern + AI export má trim + credits +
-watermark + thumbnaily. Kompletní pipeline přes 2D compositor canvas.
-**Příští krok (Fáze 5 v dalším chatu):** Vyhodnotit ohlasy z produkce a
-rozhodnout o dalším směru — buď 4.14/4.15 (Terrain Mesh + Fractal Noise),
-nebo nové fundamentální features (multi-track timeline, MIDI input, atd.).
-Před tím commit + push Round 5.
+**Aktuální fáze:** Fáze 5 — UX polish, Round 1 hotový
+**Aktuální bod:** 5.1 + 5.2 + 5.3 + 5.4 + 5.5 + 5.6 hotové. Mode subtitles,
+volume slider vždy viditelný, mobile breakpoint snížen na md, audio data
+collapsable, AI token karta collapsed když má token, ambient empty state.
+`tsc -b` exit 0.
+**Příští krok:** **Round 2 — Defaults & onboarding** (5.7 export collapse,
+5.8 toast notifikace, 5.9 onboarding tooltip). Před tím commit + push
+Round 1.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -23,6 +22,35 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 5 Round 1** — UX quick wins:
+  - **5.1 Mode toggle subtitles** v `App.tsx`: pod pillem Classic/Modern/AI
+    krátký popisek vysvětlující co aktuální režim dělá (např. „Klasické
+    Milkdrop presety — ~150 efektů, real-time export"). Plus `title` atribut
+    na každém tlačítku pro tooltip.
+  - **5.2 Volume slider + play button vždy viditelné** v `Visualizer.tsx`
+    a `ThreeVisualizer.tsx`. Control panel vyňatý z `isRunning` podmínky.
+    V idle stavu play button = `start()`, slider mění volume state hned
+    (gain se aplikuje při startu). Lepší affordance — uživatel vidí controls
+    od první vteřiny.
+  - **5.3 Mobile breakpoint lg → md** v `App.tsx`. Grid wide layout aktivní
+    od 768 px (md), ne od 1024 px (lg) — iPad portrait/landscape teď
+    dostane sidebar. Sidebar mírně užší (380 → 340 px) pro tablet fit.
+  - **5.4 Audio data collapsable** v sidebar kartě (`App.tsx`). Délka skladby
+    vždy viditelná (důležitý údaj), tech-spec (sample rate / kanály / vzorky)
+    schovaný pod toggle „Detaily" (default zavřené). Šipka rotuje 90° při
+    expanded stavu.
+  - **5.5 AI token karta collapsed když má token** (`AiHybrid.tsx`).
+    Místo plné karty se success blokem ukáže kompaktní jednořádkový status
+    `HF token: hf_••••1234` se šipkou — klik = expand pro „Odstranit token".
+    Bez tokenu zůstává plná karta s warning + návod + input. Label změněn
+    z „(volitelný)" na „(povinný)" — anonymous přístup HF zrušil.
+  - **5.6 Empty visualizer state polish** v `Visualizer.tsx` + `ThreeVisualizer.tsx`.
+    Místo čistě černého canvasu s tlačítkem ambient gradient
+    (`neutral-950 → purple-950/30`) + pulsující DJE logo (animate-pulse,
+    h-16 w-16) + tlačítko s purple glow shadow. Aplikace působí živě
+    i v idle stavu.
+  - `npx tsc -b` exit 0.
 
 - **Fáze 4.11 + 4.12 + 4.13** PWA install + intro/outro credits + watermark:
   - **4.11 PWA install prompt** v `App.tsx`:

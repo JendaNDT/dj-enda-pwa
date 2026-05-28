@@ -105,6 +105,9 @@ function formatSection(i: number, durationSec: number): string {
 export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
   const [tokenInput, setTokenInput] = useState('')
   const [storedToken, setStoredToken] = useState<string | null>(null)
+  /** Když je token nastavený, karta je defaultně collapsed (jen kompaktní status).
+   *  Uživatel ji může expandovat kliknutím — pro výměnu/odstranění tokenu (5.5). */
+  const [tokenCardExpanded, setTokenCardExpanded] = useState<boolean>(false)
   const [styleId, setStyleId] = useState<string>(STYLE_OPTIONS[0].id)
   /** Aktuální HF model — buď ID z `HF_MODELS` array, nebo sentinel `__custom__`. */
   const [modelSelection, setModelSelection] = useState<string>(DEFAULT_HF_MODEL)
@@ -364,15 +367,19 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
 
   return (
     <div className="space-y-4">
-      {/* HF Token karta */}
-      <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors hover:border-neutral-700">
-        <div className="text-xs uppercase tracking-wider text-neutral-500 mb-2">
-          HuggingFace token (volitelný)
-        </div>
-
-        {hasToken ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
+      {/* HF Token karta.
+          - Když má uživatel token: kompaktní jednořádkový status (5.5),
+            klik = expand pro odstranění / výměnu.
+          - Když nemá token: plná karta s warning + návod + input. */}
+      {hasToken ? (
+        <div className="px-6 py-3 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors hover:border-neutral-700">
+          <button
+            type="button"
+            onClick={() => setTokenCardExpanded((s) => !s)}
+            className="w-full flex items-center justify-between gap-3 text-left"
+            aria-expanded={tokenCardExpanded}
+          >
+            <div className="flex items-center gap-3 min-w-0">
               <svg
                 viewBox="0 0 24 24"
                 className="h-5 w-5 text-emerald-400 shrink-0"
@@ -385,23 +392,45 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                 <polyline points="22 4 12 14.01 9 11.01" />
               </svg>
-              <span className="text-sm text-neutral-200 font-mono">
-                {maskToken(storedToken!)}
+              <span className="text-sm text-neutral-200 font-mono truncate">
+                HF token: {maskToken(storedToken!)}
               </span>
             </div>
-            <p className="text-xs text-neutral-500">
-              Rate limit: {describeRateLimit(true)}
-            </p>
-            <button
-              type="button"
-              onClick={handleClearToken}
-              disabled={isGenerating}
-              className="text-sm text-neutral-400 hover:text-red-300 disabled:text-neutral-600 disabled:cursor-not-allowed transition-colors"
+            <svg
+              viewBox="0 0 24 24"
+              className={`h-4 w-4 text-neutral-500 shrink-0 transition-transform ${
+                tokenCardExpanded ? 'rotate-90' : ''
+              }`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              Odstranit token
-            </button>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+          {tokenCardExpanded && (
+            <div className="mt-3 pt-3 border-t border-neutral-800 space-y-2">
+              <p className="text-xs text-neutral-500">
+                Rate limit: {describeRateLimit(true)}
+              </p>
+              <button
+                type="button"
+                onClick={handleClearToken}
+                disabled={isGenerating}
+                className="text-sm text-neutral-400 hover:text-red-300 disabled:text-neutral-600 disabled:cursor-not-allowed transition-colors"
+              >
+                Odstranit token
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors hover:border-neutral-700">
+          <div className="text-xs uppercase tracking-wider text-neutral-500 mb-2">
+            HuggingFace token (povinný)
           </div>
-        ) : (
           <div className="space-y-3">
             <p className="text-sm text-amber-300">
               ⚠ HuggingFace ke konci 2025 zrušil anonymous přístup. Pro
@@ -442,8 +471,8 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
               neposílá kromě HuggingFace API.
             </p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* HF model karta — výběr modelu (Fáze 4.10). */}
       <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors hover:border-neutral-700">
