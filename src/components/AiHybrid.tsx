@@ -21,6 +21,7 @@ import {
 import { AiVisualizer } from './AiVisualizer'
 import { ExportButton } from './ExportButton'
 import { formatBytes } from '../lib/export'
+import { showToast } from '../lib/toast'
 
 interface AiHybridPropsWithFilename {
   audioBuffer: AudioBuffer
@@ -145,6 +146,7 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
     await clearAiCache()
     setCacheStatus('miss')
     await refreshCacheStats()
+    showToast('AI cache vyčištěna', 'success')
   }
 
   /** Otevřít modal pro editaci promptu konkrétního slotu. */
@@ -169,7 +171,14 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
           : k,
       ),
     )
+    const idx = editPromptIdx
     closePromptEditor()
+    showToast(
+      draft.length > 0
+        ? `Custom prompt uložen (keyframe ${idx + 1})`
+        : `Custom prompt smazán (keyframe ${idx + 1})`,
+      'success',
+    )
   }
 
   const resetPromptEditor = () => {
@@ -256,11 +265,13 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
     setHfToken(t)
     setStoredToken(t)
     setTokenInput('')
+    showToast('HF token uložen', 'success')
   }
 
   const handleClearToken = () => {
     clearHfToken()
     setStoredToken(null)
+    showToast('HF token odstraněn', 'info')
   }
 
   const handleStyleChange = (newStyleId: string) => {

@@ -73,6 +73,15 @@ export function ExportButton({
   const defaultTitle = audioFilename.replace(/\.[^/.]+$/, '')
   const [creditsTitle, setCreditsTitle] = useState<string>(defaultTitle)
   const [creditsArtist, setCreditsArtist] = useState<string>('')
+  /** „Pokročilé nastavení" expand/collapse — perzistované v localStorage (Fáze 5.7).
+   *  Default zavřené pro nové uživatele. Power user si rozklikne a my si pamatujeme. */
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dj-enda:export-advanced-open') === '1'
+    } catch {
+      return false
+    }
+  })
 
   // Feature-detect Web Share API s File support.
   const canShare =
@@ -100,6 +109,18 @@ export function ExportButton({
     setCreditsEnabled(false)
     setWatermark(false)
   }, [audioFilename])
+
+  const toggleAdvanced = () => {
+    setAdvancedOpen((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('dj-enda:export-advanced-open', next ? '1' : '0')
+      } catch {
+        // ignore (private mode)
+      }
+      return next
+    })
+  }
 
   // Cleanup thumbnail / result URL při unmountu.
   useEffect(() => {
@@ -129,6 +150,10 @@ export function ExportButton({
           artist: creditsArtist.trim() || undefined,
         }
       : undefined
+
+  /** Počet aktivních pokročilých nastavení — pro badge u toggleru (Fáze 5.7). */
+  const advancedActiveCount =
+    (isTrimmed ? 1 : 0) + (creditsEnabled ? 1 : 0) + (watermark ? 1 : 0)
 
   const estimatedBytes = estimateOutputSize(effectiveDuration, qualityId)
   const filename = buildExportFilename(audioFilename)
@@ -479,6 +504,42 @@ export function ExportButton({
         </div>
       </div>
 
+      {/* Pokročilé nastavení toggle (Fáze 5.7) — sbaluje trim, credits, watermark. */}
+      <button
+        type="button"
+        onClick={toggleAdvanced}
+        aria-expanded={advancedOpen}
+        className="w-full px-6 py-3 rounded-2xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-colors flex items-center justify-between"
+      >
+        <span className="flex items-center gap-2 text-sm text-neutral-300">
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4 text-neutral-500 transition-transform ${
+              advancedOpen ? 'rotate-90' : ''
+            }`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          Pokročilé nastavení
+          {advancedActiveCount > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-200 text-[10px] font-medium">
+              {advancedActiveCount} aktivní
+            </span>
+          )}
+        </span>
+        <span className="text-xs text-neutral-500">
+          Oříznutí · titulky · watermark
+        </span>
+      </button>
+
+      {advancedOpen && (
+        <div className="space-y-3">
+
       {/* Trim sekce — start a end slidery v sekundách (krok 1s). */}
       <div className="px-6 py-4 rounded-2xl bg-neutral-900 border border-neutral-800">
         <div className="flex items-center justify-between mb-3">
@@ -606,6 +667,9 @@ export function ExportButton({
           />
         </label>
       </div>
+
+        </div>
+      )}
 
       <button
         type="button"

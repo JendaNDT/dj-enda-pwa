@@ -4,14 +4,14 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 5 — UX polish, Round 1 hotový
-**Aktuální bod:** 5.1 + 5.2 + 5.3 + 5.4 + 5.5 + 5.6 hotové. Mode subtitles,
-volume slider vždy viditelný, mobile breakpoint snížen na md, audio data
-collapsable, AI token karta collapsed když má token, ambient empty state.
-`tsc -b` exit 0.
-**Příští krok:** **Round 2 — Defaults & onboarding** (5.7 export collapse,
-5.8 toast notifikace, 5.9 onboarding tooltip). Před tím commit + push
-Round 1.
+**Aktuální fáze:** Fáze 5 — UX polish, Round 1 + Round 2 hotové
+**Aktuální bod:** 5.1 + 5.2 + 5.3 + 5.4 + 5.5 + 5.6 + 5.7 + 5.8 + 5.9 hotové.
+Defaults & onboarding: export Pokročilé nastavení collapsable s badge,
+toast systém + použití (favorites/cache/token/prompt), onboarding bubble
+u help tlačítka. `tsc -b` exit 0.
+**Příští krok:** **Round 3 — Hero & live preview** (5.10 pre-upload showcase
+videí, 5.11 live preview hned po uploadu). 5.10 vyžaduje manuálně vytvořit
+3 ukázková MP4 do public/showcase/. Před tím commit + push Round 2.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -22,6 +22,33 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 5 Round 2** — Defaults & onboarding:
+  - **5.8 Toast systém** — nový `src/lib/toast.ts` se subscribe pattern
+    (global array + listeners), žádný Context — `showToast(msg, kind)` lze
+    volat odkudkoliv. `useToasts()` hook v `ToastContainer.tsx` komponentě.
+    Auto-dismiss po 3 s, manual dismiss tlačítkem X.
+    * `src/components/ToastContainer.tsx` — UI, fixed pozice (mobile bottom-center,
+      desktop bottom-right), slide-in animace přes custom `@keyframes` v `index.css`.
+    * Wirování: `useFavorites.toggle()` toast „Přidáno/Odebráno z oblíbených",
+      `AiHybrid.handleClearCache` „AI cache vyčištěna",
+      `AiHybrid.handleSaveToken/ClearToken` „HF token uložen/odstraněn",
+      `AiHybrid.savePromptEditor` „Custom prompt uložen/smazán".
+    * Mountnutí `<ToastContainer />` v App.tsx root vedle footeru.
+  - **5.7 Export sekce „Pokročilé nastavení" collapse** — `ExportButton.tsx`:
+    * Default zavřené (čistý UX pro casual usera).
+    * Trim + credits + watermark přesunuté pod toggle.
+    * State perzistovaný v localStorage (`dj-enda:export-advanced-open`),
+      power user si pamatuje preferenci napříč sessions.
+    * **Badge „N aktivní"** ukazuje počet zapnutých pokročilých nastavení
+      i v zavřeném stavu — uživatel vidí, že tam něco je nastavené.
+  - **5.9 Onboarding tooltip** — `App.tsx`:
+    * Bubble u help tlačítka „Stiskni `?` pro klávesové zkratky".
+    * Viditelný jen prvně + po prvním uploadu (`audioFile != null`).
+    * Dismiss = uloží localStorage flag `dj-enda:onboarding-seen`, klik na
+      help tlačítko taky dismissuje (uživatel objevil sám).
+    * Slide-in animací, decentní purple barva s arrow indikátorem nahoře.
+  - `npx tsc -b` exit 0.
 
 - **Fáze 5 Round 1** — UX quick wins:
   - **5.1 Mode toggle subtitles** v `App.tsx`: pod pillem Classic/Modern/AI

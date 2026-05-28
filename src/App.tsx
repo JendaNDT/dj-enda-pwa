@@ -4,6 +4,7 @@ import { Visualizer, pickInitialPreset } from './components/Visualizer'
 import { ThreeVisualizer } from './components/ThreeVisualizer'
 import { AiHybrid } from './components/AiHybrid'
 import { ExportButton } from './components/ExportButton'
+import { ToastContainer } from './components/ToastContainer'
 import {
   useAudioDecoder,
   formatDuration,
@@ -55,6 +56,15 @@ function App() {
   const [visualizerMode, setVisualizerMode] =
     useState<VisualizerMode>('classic')
   const [showHelp, setShowHelp] = useState(false)
+  /** Onboarding bubble u help tlačítka — zobrazí se jen prvním návštěvníkům
+   *  po prvním uploadu (Fáze 5.9). Dismiss = uloží flag do localStorage. */
+  const [showOnboardingBubble, setShowOnboardingBubble] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dj-enda:onboarding-seen') !== '1'
+    } catch {
+      return false
+    }
+  })
   /** Sidebar karta — collapse / expand tech-spec detailů (Fáze 5.4). */
   const [showAudioDetails, setShowAudioDetails] = useState<boolean>(false)
   /** Zachycený `beforeinstallprompt` event pro PWA install (Fáze 4.11).
@@ -71,6 +81,15 @@ function App() {
   const visualizerContainerRef = useRef<HTMLDivElement | null>(null)
 
   const reset = () => setAudioFile(null)
+
+  const dismissOnboarding = () => {
+    setShowOnboardingBubble(false)
+    try {
+      localStorage.setItem('dj-enda:onboarding-seen', '1')
+    } catch {
+      // ignore
+    }
+  }
 
   // ─── PWA install prompt (Fáze 4.11) ──────────────────────────────────────
   useEffect(() => {
@@ -247,19 +266,45 @@ function App() {
             )}
 
             {/* Help tlačítko — otevře overlay s klávesovými zkratkami. */}
-            <button
-              type="button"
-              onClick={() => setShowHelp(true)}
-              className="h-9 w-9 flex items-center justify-center rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors"
-              aria-label="Klávesové zkratky"
-              title="Klávesové zkratky (?)"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHelp(true)
+                  if (showOnboardingBubble) dismissOnboarding()
+                }}
+                className="h-9 w-9 flex items-center justify-center rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors"
+                aria-label="Klávesové zkratky"
+                title="Klávesové zkratky (?)"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </button>
+              {/* Onboarding bubble — viditelný jen prvně + po uploadu (Fáze 5.9). */}
+              {showOnboardingBubble && audioFile && (
+                <div className="absolute top-full right-0 mt-2 w-64 px-3 py-2 rounded-lg bg-purple-600 text-white text-xs shadow-xl animate-toast-in z-50">
+                  <div className="absolute -top-1 right-3 w-2 h-2 bg-purple-600 rotate-45" />
+                  <div className="flex items-start gap-2">
+                    <span className="flex-1">
+                      Stiskni <kbd className="px-1 py-0.5 rounded bg-purple-900/60 font-mono text-[10px]">?</kbd> pro klávesové zkratky (Space, N/P, F, …).
+                    </span>
+                    <button
+                      type="button"
+                      onClick={dismissOnboarding}
+                      className="shrink-0 text-purple-200 hover:text-white"
+                      aria-label="Zavřít nápovědu"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Disclaimer pill — privacy uklidnění */}
             <div className="px-4 py-2 rounded-full bg-emerald-950/30 border border-emerald-900/50 flex items-center gap-2 text-xs text-emerald-300/90">
@@ -543,6 +588,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Toast notifikace container — fixed pozice, mountnut na root (Fáze 5.8). */}
+      <ToastContainer />
 
       <footer className="w-full px-4 md:px-8 lg:px-12 py-6 border-t border-neutral-900/80">
         <div className="mx-auto max-w-[1600px] flex items-center gap-3 text-xs text-neutral-600">

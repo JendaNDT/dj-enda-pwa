@@ -165,9 +165,9 @@ a delight detaily. Rozdělené do 4 roundů podle dopadu a velikosti.
 
 | # | Bod | Velikost |
 |---|---|---|
-| 5.7 | Export sekce „Pokročilé nastavení" collapse (trim/credits/watermark) | M |
-| 5.8 | Toast notifikace systém + použít pro favorites/cache/token | M |
-| 5.9 | Onboarding tooltip „Stiskni ? pro shortcuts" (one-time, localStorage) | S |
+| 5.7 | Export sekce „Pokročilé nastavení" collapse (trim/credits/watermark) ✅ done | M |
+| 5.8 | Toast notifikace systém + použít pro favorites/cache/token ✅ done | M |
+| 5.9 | Onboarding tooltip „Stiskni ? pro shortcuts" (one-time, localStorage) ✅ done | S |
 
 ### Round 3 — Hero & live preview
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { showToast } from './toast'
 
 /**
  * Oblíbené presety perzistované v localStorage, odděleně pro Classic
@@ -74,9 +75,15 @@ export function useFavorites(kind: PresetKind): {
     (key: string) => {
       setFavorites((prev) => {
         const next = new Set(prev)
-        if (next.has(key)) next.delete(key)
+        const wasFav = next.has(key)
+        if (wasFav) next.delete(key)
         else next.add(key)
         writeFavorites(kind, Array.from(next))
+        // Toast feedback — silent toggle byl matoucí (Fáze 5.8).
+        showToast(
+          wasFav ? 'Odebráno z oblíbených' : 'Přidáno do oblíbených',
+          'success',
+        )
         return next
       })
     },
