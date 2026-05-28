@@ -1,37 +1,63 @@
 import { useRef, useState } from 'react'
 import {
   exportVideo,
+  exportVideoModern,
   estimateOutputSize,
   downloadBlob,
   buildExportFilename,
   formatEta,
   formatBytes,
+  EXPORT_QUALITIES,
+  DEFAULT_EXPORT_QUALITY_ID,
+  getExportQualityById,
   type ExportProgress,
 } from '../lib/export'
+
+export type ExportMode = 'classic' | 'modern'
 
 interface ExportButtonProps {
   audioBuffer: AudioBuffer
   audioFilename: string
+  /** Pro Classic mód = Butterchurn preset key; pro Modern = Modern preset id. */
   presetKey: string
+  mode: ExportMode
 }
 
 type Status = 'idle' | 'confirming' | 'exporting' | 'done' | 'error'
 
 const CONFIRM_THRESHOLD_SECONDS = 600 // 10 minut
 
+function describeStage(stage?: ExportProgress['stage']): string {
+  switch (stage) {
+    case 'extract':
+      return 'Analyzuji audio'
+    case 'finalize':
+      return 'Finalizuji soubor'
+    case 'render':
+    default:
+      return 'Renderuji'
+  }
+}
+
 export function ExportButton({
   audioBuffer,
   audioFilename,
   presetKey,
+  mode,
 }: ExportButtonProps) {
   const [status, setStatus] = useState<Status>('idle')
   const [progress, setProgress] = useState<ExportProgress | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [qualityId, setQualityId] = useState<string>(
+    DEFAULT_EXPORT_QUALITY_ID,
+  )
   const abortRef = useRef<AbortController | null>(null)
 
   const duration = audioBuffer.duration
-  const estimatedBytes = estimateOutputSize(duration)
+  const estimatedBytes = estimateOutputSize(duration, qualityId)
   const filename = buildExportFilename(audioFilename)
+  const modeLabel = mode === 'classic' ? 'Classic' : 'Modern'
+  const quality = getExportQualityById(qualityId) ?? EXPORT_QUALITIES[1]
 
   const handleExportClick = () => {
     setErrorMsg(null)
@@ -49,12 +75,22 @@ export function ExportButton({
     abortRef.current = controller
 
     try {
-      const blob = await exportVideo({
-        audioBuffer,
-        presetKey,
-        signal: controller.signal,
-        onProgress: setProgress,
-      })
+      const blob =
+        mode === 'classic'
+          ? await exportVideo({
+              audioBuffer,
+              presetKey,
+              qualityId,
+              signal: controller.signal,
+              onProgress: setProgress,
+            })
+          : await exportVideoModern({
+              audioBuffer,
+              presetId: presetKey,
+              qualityId,
+              signal: controller.signal,
+              onProgress: setProgress,
+            })
       downloadBlob(blob, filename)
       setStatus('done')
     } catch (e: unknown) {
@@ -79,11 +115,14 @@ export function ExportButton({
   // === Render ===
 
   if (status === 'confirming') {
-    const etaEstimateMin = Math.ceil(duration / 60)
+    const etaEstimateMin =
+      mode === 'classic'
+        ? Math.ceil(duration / 60)
+        : Math.ceil(duration / 60 / 2.5) // Modern je ~2.5× rychlejší než real-time
     return (
       <div className="px-6 py-5 rounded-2xl bg-amber-950/30 border border-amber-800/50">
         <div className="text-xs uppercase tracking-wider text-amber-400 mb-2">
-          Potvrzení dlouhého exportu
+          Potvrzení dlouhého exportu · {modeLabel} · {quality.name}
         </div>
         <p className="text-sm text-neutral-200">
           Tvůj track má {formatEta(duration)}. Export bude trvat zhruba{' '}
@@ -119,7 +158,7 @@ export function ExportButton({
     return (
       <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800">
         <div className="text-xs uppercase tracking-wider text-neutral-500 mb-3">
-          Probíhá export
+          Export · {modeLabel} · {describeStage(progress.stage)}
         </div>
         <div className="text-sm text-neutral-200">
           Snímek {progress.frame.toLocaleString('cs-CZ')} /{' '}
@@ -155,7 +194,7 @@ export function ExportButton({
     return (
       <div className="px-6 py-5 rounded-2xl bg-emerald-950/30 border border-emerald-800/50">
         <div className="text-xs uppercase tracking-wider text-emerald-400 mb-2">
-          Hotovo
+          Hotovo · {modeLabel}
         </div>
         <p className="text-sm text-neutral-200">
           Video <strong>{filename}</strong> bylo staženo do tvé složky Stažené.
@@ -175,7 +214,7 @@ export function ExportButton({
     return (
       <div className="px-6 py-5 rounded-2xl bg-red-950/40 border border-red-800/60">
         <div className="text-xs uppercase tracking-wider text-red-400 mb-2">
-          Export selhal
+          Export selhal · {modeLabel}
         </div>
         <p className="text-sm text-red-200">{errorMsg ?? 'Neznámá chyba'}</p>
         <button
@@ -191,25 +230,48 @@ export function ExportButton({
 
   // status === 'idle'
   return (
-    <button
-      type="button"
-      onClick={handleExportClick}
-      className="w-full px-6 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors flex items-center justify-center gap-3"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <div className="space-y-3">
+      <div className="px-6 py-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+        <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">
+          Kvalita exportu
+        </label>
+        <select
+          value={qualityId}
+          onChange={(e) => setQualityId(e.target.value)}
+          className="w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
+        >
+          {EXPORT_QUALITIES.map((q) => (
+            <option key={q.id} value={q.id}>
+              {q.name} — {q.description}
+            </option>
+          ))}
+        </select>
+        <div className="mt-2 text-xs text-neutral-500">
+          Odhad velikosti: <strong>{formatBytes(estimatedBytes)}</strong>
+          {' · '}
+          {quality.width}×{quality.height} @ {quality.fps} FPS
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={handleExportClick}
+        className="w-full px-6 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors flex items-center justify-center gap-3"
       >
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-      Exportovat do MP4 (1080p60)
-    </button>
+        <svg
+          viewBox="0 0 24 24"
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        Exportovat do MP4 · {modeLabel}
+      </button>
+    </div>
   )
 }

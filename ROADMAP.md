@@ -47,19 +47,28 @@ synchronizovanou se zvukem. Stáhne ho a nahraje na YouTube. Žádný backend.
 
 ## Fáze 2 — Polished (1–2 týdny, vlastní WebGPU shadery)
 
-Cíl: Vyměnit Butterchurn za vlastní Three.js + TSL vizuály řízené audio
-features. Lepší kvalita, vlastní brand, méně závislostí.
+Cíl: **Přidat** vlastní Three.js + TSL vizualizér jako paralelní Modern mód
+vedle Classic (Butterchurn). Butterchurn zůstává natrvalo — uživatel ho
+esteticky preferuje. Po dokončení Fáze 2 bude aplikace umět oba režimy
+včetně exportu.
 
 | # | Bod | Status |
 |---|---|---|
-| 2.1 | Nahradit Butterchurn za Three.js r171+ s `WebGPURenderer` | ⏳ pending |
-| 2.2 | Přidat Meyda — spectral flux beat detection (offline analýza) | ⏳ pending |
-| 2.3 | Vyrobit 3 vlastní TSL shader presety (sphere distortion, particle flow, kaleidoscope) | ⏳ pending |
-| 2.4 | Audio uniformy: kick (low band), snare (mid), brightness (high), RMS, beat pulse | ⏳ pending |
-| 2.5 | Přesunout export pipeline do Web Workeru s `OffscreenCanvas` | ⏳ pending |
-| 2.6 | Export presety: 1080p30 12 Mbps / 1080p60 20 Mbps / 1440p30 25 Mbps | ⏳ pending |
-| 2.7 | Disclaimer banner „vše se zpracovává v prohlížeči, nic se neposílá ven" | ⏳ pending |
-| 2.8 | UI polish: dark mode, smooth transitions, ikonografie | ⏳ pending |
+| 2.1a | Three.js + WebGPURenderer setup (kostra + rotující icosahedron) | ✅ done |
+| 2.1b | Audio reaktivita — RMS pulzování + color shift | ✅ done |
+| — | **User decision:** Butterchurn ZŮSTÁVÁ natrvalo jako Classic mód | ✅ |
+| 2.2 | Přidat Meyda — spectral flux beat detection (offline analýza) | ✅ done |
+| 2.3a | Preset framework + Sphere Distortion | ✅ done |
+| 2.3b | Particle Flow preset | ✅ done |
+| 2.3c | Kaleidoscope preset | ✅ done |
+| 2.4 | Audio uniformy: kick (low band), snare (mid), brightness (high), RMS, beat pulse | ✅ done |
+| 2.5a | audioTime uniform — refactor presetů (TSL `time` → `audioTime`) | ✅ done |
+| 2.5b | `exportVideoModern()` — rychlejší-než-real-time Modern export | ✅ done |
+| 2.5c | ExportButton mode-aware + App.tsx integration | ✅ done |
+| 2.5d | (volitelné, odložené) Přesunout Classic export do Web Workeru | ⏳ pending |
+| 2.6 | Export kvality: Rychlý (720p30) / Standard (1080p60) / Filmový (1080p30) / Vysoká (1440p30) | ✅ done |
+| 2.7 | Disclaimer banner „vše se zpracovává v prohlížeči, nic se neposílá ven" | ✅ done |
+| 2.8 | UI polish: dark mode, smooth transitions, ikonografie | ✅ done |
 
 **Akceptační kritérium Fáze 2:** Export 3min videoklipu trvá pod 60 sekund na
 běžném notebooku (M2 nebo ekvivalent). UI thread zůstává responzivní během

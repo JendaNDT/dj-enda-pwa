@@ -75,15 +75,28 @@ export function AudioUpload({ onFileSelected }: AudioUploadProps) {
           px-8 py-16
           border-2 border-dashed rounded-2xl
           cursor-pointer
-          transition-colors
+          transition-all duration-200
           ${
             isDragging
-              ? 'border-purple-500 bg-purple-500/10'
+              ? 'border-purple-500 bg-purple-500/10 scale-[1.01]'
               : 'border-neutral-700 bg-neutral-900 hover:border-neutral-500 hover:bg-neutral-800'
           }
         `}
       >
         <div className="text-center">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-10 w-10 mx-auto mb-4 text-neutral-600"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
           <p className="text-lg font-medium text-neutral-200">
             Přetáhni sem audio soubor
           </p>

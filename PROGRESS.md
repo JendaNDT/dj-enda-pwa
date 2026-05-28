@@ -4,8 +4,12 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 1 hotová → návrh přejít na Fázi 2 (polished, vlastní Three.js + TSL)
-**Aktuální bod:** Fáze 1 uzavřena. Před přechodem na 2.1 doporučen cleanup commit.
+**Aktuální fáze:** Fáze 2 dokončena 🎉 (volitelná Fáze 3 — AI hybrid přes Fal.ai)
+**Aktuální bod:** 2.8 hotov → Fáze 2 plně uzavřena
+**Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
+natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
+(Three.js) je paralelní alternativa, kterou postupně dotahujeme. Žádné
+„vyhození Butterchurnu" se nekoná. Export musí podporovat oba režimy.
 
 ---
 
@@ -53,6 +57,142 @@ dokončeném bodě z `ROADMAP.md`.
     null, ukáže `<AudioUpload>`. Pokud vybrán soubor, ukáže název + velikost
     + tlačítko „Vybrat jiný soubor".
   - Ověřeno v Chrome: drag-drop, klik, validace, reset všechno funguje.
+- **Fáze 2.7 + 2.8** Disclaimer banner + UI polish (sloučené):
+  - **Disclaimer banner** — pill-shaped, zelený, vždy viditelný pod headerem:
+    „Všechno běží jen v tvém prohlížeči — audio, vizualizér, export. Žádný
+    server, žádný upload." Lock ikona vlevo.
+  - **Header logo** — inline SVG, fialový čtverec s „DJE" iniciálami + akcent
+    tečka. Vedle title. Stejný visual jazyk jako PWA ikona.
+  - **Gradient background** — tmavá k purple v dolní části (subtle).
+  - **Card hover effect** — border ztmavne při hover (transition-colors).
+  - **AudioUpload polish** — upload icon (download arrow), scale-up effekt
+    při drag-over, smooth transition.
+  - **Footer redesign** — verze + link na GitHub repo.
+- **Fáze 2.6** Export kvality (rozlišení/FPS/bitrate):
+  - `EXPORT_QUALITIES` array s 4 možnostmi (Rychlý, Standard, Filmový, Vysoká).
+  - `exportVideo()` + `exportVideoModern()` přijímají `qualityId` parametr,
+    který vrátí `width`, `height`, `fps`, `videoBitrate`. Audio bitrate konstantní.
+  - `estimateOutputSize()` přijímá `qualityId`, počítá podle aktuální bitrate.
+  - `ExportButton` má v idle stavu **dropdown výběru kvality** + odhad velikosti
+    + rozlišení/FPS pod ním. Default = Standard (1080p60 12 Mbps).
+- **Fáze 2.5** Modern export pipeline (rozděleno na a/b/c):
+  - **2.5a** Refactor: nahradit TSL builtin `time` za vlastní `uniforms.audioTime`.
+    V live preview se nastavuje na `audioCtx.currentTime - startTime` (playing)
+    nebo `+= deltaTime` (idle). V exportu na `i / fps`. Bez tohoto by byl rychlejší-
+    než-real-time export desynchronizovaný (vizuál by běžel rychleji než audio).
+  - **2.5b** `exportVideoModern()` v `lib/export.ts`:
+    * Pre-compute Meyda features (z 2.2/2.4).
+    * `OffscreenCanvas(1920, 1080)` + samostatný `WebGPURenderer` + Scene + Camera.
+    * `createUniforms()` + `preset.setup(scene, uniforms)`.
+    * Mediabunny `Output` + `CanvasSource` (H.264 12 Mbps) + `AudioBufferSource` (AAC).
+    * Render loop **bez čekání na real-time audio** — pro každý frame nastavíme
+      uniforms z `features[i]`, voláme `preset.update()`, `await renderer.renderAsync()`,
+      `await videoSource.add(...)`. Rychlost je čistě GPU-bound.
+    * Očekávané zrychlení 2-5× oproti real-time (závisí na GPU + presetu).
+  - **2.5c** `ExportButton` přijímá `mode: 'classic' | 'modern'` prop, volá
+    příslušnou export funkci. Progress badge ukazuje fázi
+    (Analyzuji audio / Renderuji / Finalizuji). Confirm dialog upravený
+    odhad ETA podle módu.
+  - **App.tsx** vždy zobrazuje ExportButton (s aktuálním módem) — placeholder
+    "Export přijde ve 2.5" odstraněn.
+  - **Odloženo na 2.5d:** přesun Classic exportu do Web Workeru
+    (nevyžaduje urgenci; Classic je sync na real-time audio, takže Worker by
+    sice neblokoval UI, ale celkový čas exportu by zůstal stejný).
+- **Fáze 2.4** Audio uniforms — band separation:
+  - `audioFeatures.ts` rozšířen o **3 frekvenční pásma** (bins do FFT 1024):
+    * **Low** (0..8 bins, ~0-180 Hz) — kick, sub-bass
+    * **Mid** (8..128 bins, ~180-2900 Hz) — snare, vokál, melody
+    * **High** (128..512 bins, ~2900-11600 Hz) — hi-hat, brightness
+  - Per-band RMS spočítaný a normalizovaný k max v tracku (každý band zvlášť).
+  - `VisualizerUniforms` rozšířen o `low`, `mid`, `high`. `createUniforms`
+    je vytváří, `ThreeVisualizer` je updatuje v render loopu.
+  - **Tři presety přemapované** na band-specific reactivity:
+    * **Sphere Distortion:** low → displacement amplitude + scale; mid → noise
+      speed + rotation; high → color shift k oranžové + glow + brightness.
+    * **Particle Flow:** low → radiální expanze + rotation rychlost; mid → swirl
+      speed + brightness baseline; high → particle size + vertikální jitter.
+    * **Kaleidoscope:** low → základní počet segmentů (4); high → jemné segmenty
+      (až 14); mid → rychlost ring waves; high → jiskřivost.
+- **Fáze 2.3c** Třetí preset — Kaleidoscope:
+  - `THREE.PlaneGeometry(20, 12)` před kamerou — full-screen quad přes
+    `screenUV` nezávisle na FOV.
+  - `MeshBasicNodeMaterial` s pure fragment shaderem v `colorNode`.
+  - **TSL kaleidoscope algoritmus:**
+    * Center UV s aspect-ratio korekcí (16:9).
+    * Polární souřadnice: `r = length(uv)`, `a = atan2(y, x)`.
+    * Kaleidoscope fold: `abs(mod(a, π·2/N) - π/N)` → symetrický N-segmentový pattern.
+    * N (počet segmentů) modulován `centroid`: 4..12.
+    * Pattern: kombinace ring wave a arm wave (sin × sin).
+    * 3-way color mix (cool / warm / accent) podle patternu + beat boost.
+    * Soft vignette (radiální fade ke krajům).
+- **Fáze 2.3b** Druhý preset — Particle Flow:
+  - `THREE.Points` se 2000 částicemi (sferická distribuce, radius 0.6-1.8).
+  - Per-particle `phase` Float32Array (0..2π) — každá částice má vlastní rytmus.
+  - `PointsNodeMaterial` s `transparent: true` + `AdditiveBlending` (svíticí).
+  - **TSL `colorNode`** — uniform color (stejná pro všechny částice) mix
+    modrá/oranžová podle centroidu × brightness(rms, beat).
+  - **JS-driven position update** v `update()`:
+    * Per-particle swirl rotace kolem Y (rychlost podle phase × time).
+    * Radiální expanze podle `1 + rms × 0.5 + beat × 0.4`.
+    * Vertikální jitter `sin(phase + t) × 0.08 × rms`.
+    * Point size dynamicky 6..22 px podle rms+beat.
+    * Celý systém pomalu rotuje kolem Y (rychlost úměrná rms).
+  - Důvod JS update místo TSL position: `SpriteNodeMaterial.positionNode` je
+    typovaný jako `vec2` (sprite offset), ne `vec3` pro 3D pozici. JS update
+    je pro 2000 částic × 60 FPS performance-trivial (~360k float writes/s).
+- **Fáze 2.3a** TSL preset framework + první preset:
+  - `src/lib/modernPresets.ts` — typy + registry:
+    * `VisualizerUniforms { rms, beat, centroid }` (UniformNode ze `three/tsl`).
+    * `ModernPreset.setup(scene, uniforms) → PresetInstance { dispose, update? }`.
+    * `MODERN_PRESETS` array, `getPresetById`, `DEFAULT_PRESET_ID`.
+  - **Sphere Distortion** preset:
+    * `IcosahedronGeometry(1, 6)` + `MeshBasicNodeMaterial`.
+    * TSL vertex node: `positionLocal + normalLocal × (base + rms × noise + beat)`.
+      Noise = trojnásobné sin v různých frekvencích a fázích.
+    * TSL color node: `mix(cool, warm, centroid) × brightness(rms, beat)`.
+    * `update` callback dělá rotaci v JS (rms zvyšuje rychlost, beat scale spike).
+  - `ThreeVisualizer.tsx` přepsán na preset systém:
+    * `applyPreset()` dispose + setup při změně.
+    * Render loop aktualizuje `uniforms.rms.value` atd. z Meyda features.
+    * Idle režim plynule decay-uje uniformy k neutrálu (žádný snap zpět).
+    * Preset dropdown v UI (zatím 1 položka).
+  - `App.tsx` drží `modernPresetId` state, sdílí s ThreeVisualizerem.
+- **Fáze 2.2** Meyda + offline audio features:
+  - `npm install meyda` (v5.6.3) u uživatele.
+  - `src/lib/audioFeatures.ts` — `extractFeatures(audioBuffer, fps, onProgress)`
+    běží offline, vrací typovaný `AudioFeatures` s `Float32Array` per feature
+    indexované per video frame:
+    * `rms` (0..1) — amplitudou-jako-energii pro pulzování.
+    * `spectralCentroid` (0..1, normalizovaný) — pro hue mapping.
+    * `spectralFlux` (0..1, normalizovaný k max v tracku) — surová beat data.
+    * `energy` (lineární) — alternativní metrika.
+    * `beat` (0..1) — post-processed flux s adaptivním threshold (mean + 1.5×std
+      rolling window ~0.5 s).
+    * `fps`, `totalFrames` — metadata.
+  - Yieldne `setTimeout(0)` každých 100 oken, neblokuje UI thread.
+  - `ThreeVisualizer.tsx` — nový stav `analyzing` s progress overlay.
+    Při startu nejdřív Meyda extract (~5-15 s pro 33min track), pak audio + render.
+  - Render loop místo `analyserNode.getByteFrequencyData()` čte pre-computed
+    `features[frameIdx]` podle `audioCtx.currentTime`. Beat event přidává
+    krátký scale spike + brightness boost s exponential decay.
+- **Fáze 2.1b** Audio reaktivita pro Modern vizualizér:
+  - State machine `idle | playing | paused | ended` (stejný pattern jako Classic).
+  - „Spustit náhled" tlačítko overlay (kvůli AudioContext autoplay policy).
+  - Audio routing: `source → AnalyserNode (FFT 2048) → GainNode → destination`.
+  - Render loop čte `getByteFrequencyData()` každý snímek:
+    * RMS basů z dolních 32 binů (0..1) → `mesh.scale` + zvýšená rotation.
+    * Spectral centroid (vážený průměr indexů) → `material.color.setHSL(hue, ...)`.
+  - Play/Pause přes `audioCtx.suspend/resume`, hlasitost přes `gainNode`.
+  - Render loop přepíná mezi idle a reaktivním režimem podle existence analyseru.
+- **Fáze 2.1a** Three.js + WebGPURenderer setup hotov:
+  - `npm install three` u uživatele (v r180+, oficiální TS typings included).
+  - `src/components/ThreeVisualizer.tsx` — kostra s `WebGPURenderer` (import
+    z `three/webgpu`), automatický fallback na WebGL2 přes `renderer.init()`.
+    Rotující drátový icosahedron jako PoC. UI ukazuje, který backend se používá.
+  - `src/App.tsx` — přidán toggle Classic / Modern (pill design), conditional
+    render `<Visualizer>` nebo `<ThreeVisualizer>`. Export tlačítko viditelné
+    jen v Classic módu (export Three.js scény přijde v 2.5).
+  - Ověřeno: na Apple Silicon MacBook Air backend = **WebGPU** (ne fallback).
 - **Fáze 1.10** Deploy hotov:
   - GitHub repo: <https://github.com/JendaNDT/dj-enda-pwa> (public).
   - Vercel produkce: <https://dj-enda-pwa.vercel.app>.
@@ -122,21 +262,14 @@ dokončeném bodě z `ROADMAP.md`.
 
 ## Co je rozjeté
 
-- Nic. **Fáze 1 (MVP) je kompletní.** Aplikace běží na produkci.
+- Nic. Čekáme na ověření 2.3a v Modern módu a souhlas s **2.3b** (Particle Flow).
 
-## Co je další (doporučené pořadí)
+## Co je další (volitelné)
 
-1. **Cleanup commit** (nepovinný, ale zlepšuje repo):
-   - Doplnit `.gitignore` o `dev-dist/`, `.DS_Store`, `*.log`.
-   - Smazat `src/App.css` (prázdný komentář) a default Vite assety
-     (`src/assets/react.svg`, `src/assets/vite.svg`, `src/assets/hero.png`,
-     `public/icons.svg`).
-   - Vytvořit `vercel.json` s bezpečnostními hlavičkami (HSTS, X-Frame-Options,
-     atd.) — best practice.
-   - Nahradit default Vite `README.md` za stručný popis projektu.
-2. **Fáze 2 — Polished:**
-   - 2.1: Nahradit Butterchurn za Three.js r171+ s `WebGPURenderer`.
-   - 2.2–2.8 viz ROADMAP.md.
+- **Cleanup commit + deploy** — push změny do GitHubu, Vercel auto-redeployne
+  produkci s plnou Fází 2.
+- **Fáze 3 — AI hybrid (volitelná)** — Fal.ai keyframy přes BYO-key. Body 3.1–3.6.
+  Aktuálně low priority; aplikace je už plně funkční.
 
 ## Známé bugy / problémy
 

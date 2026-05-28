@@ -80,9 +80,13 @@ Tyhle **potřebují** „piš":
 - **Mediabunny místo mp4-muxer.** Autor (Vanilagy) označil mp4-muxer za
   deprecated. Mediabunny ho plně nahrazuje, je tree-shakable a sponzorovaná
   Remotion. Pro vše nové platí Mediabunny.
-- **@webamp/butterchurn místo originálního butterchurn.** Originál stagnuje
-  7 let; webamp fork je aktivní (i když beta). Pro MVP je drop-in vizualizér,
-  jakmile přejdeme na vlastní Three.js + TSL ve Fázi 2, závislost odstraníme.
+- **@webamp/butterchurn zůstává natrvalo jako Classic mód.** Původní plán byl
+  vyhodit ho po Fázi 2.4 ve prospěch vlastních Three.js shaderů. Po reálném
+  testování 2.1b uživatel rozhodl, že Butterchurn (~150 Milkdrop presetů)
+  esteticky převažuje a chce ho ponechat jako default. Fáze 2 tedy přidává
+  **Modern mód (Three.js / WebGPU)** jako paralelní alternativu, ne náhradu.
+  V UI je trvalý přepínač Classic / Modern; export pipeline bude ve 2.5
+  rozšířen tak, aby exportoval oba režimy.
 - **Export defaultně 1080p60 @ 12 Mbps H.264 + AAC.** Volba uživatele (Jenda
   preferuje 60 FPS pro hladší vizuální feel). YouTube doporučuje pro 1080p60
   minimálně 12 Mbps; vyšší bitrate by zbytečně zvětšil výstup. Live náhled
@@ -147,6 +151,20 @@ než ho upravíš. Nikdy tiše neuprav test, aby procházel.
 Sem patří **neobvyklá** zjištění, na která narazíme během vývoje a která by
 příští session zase trefila. Formát: krátký bullet point + datum.
 
+- **2026-05-28** — **Modern export benchmark (M-series Mac, 4min Suno track,
+  Sphere Distortion preset, 1080p60 H.264 12 Mbps):**
+  Tempo cca **230 snímků/s** = **~3.8× rychlejší než real-time**. Pre-computed
+  Meyda features + `audioTime` uniform sync + WebGPURenderer + Mediabunny
+  s WebCodecs jsou efektivní kombinace. Particle Flow a Kaleidoscope budou
+  pravděpodobně mírně pomalejší (víc per-frame work), ale stále nad real-time.
+- **2026-05-28** — `atan2` NENÍ runtime export z `three/tsl` (i když je v dokumentaci
+  uvedený). Místo toho použít `atan(y, x)` — dvouargumentová varianta atan v TSL
+  funguje jako atan2 (GLSL/WGSL konvence).
+- **2026-05-28** — TSL `positionNode`/`colorNode`/`emissiveNode` MUSÍ být zabaleno
+  v `Fn(() => { ... })()` wrapper. Bez něj Three.js builder TSL graf tiše ignoruje
+  (žádný shader compile error v konzoli, jen default material behavior).
+  Důkaz: `node_modules/three/examples/jsm/modifiers/CurveModifierGPU.js`.
+  Vzor: `material.positionNode = Fn(() => { return positionLocal.add(...) })()`.
 - **2026-05-28** — `npm install` nikdy nespouštět v sandboxu (Linux x64), když
   uživatel pracuje na Macu (Darwin arm64). Vite 8 + Rolldown vyžaduje
   platformně-specifickou nativní binárku (`@rolldown/binding-darwin-arm64`).
