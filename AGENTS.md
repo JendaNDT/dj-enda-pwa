@@ -147,10 +147,14 @@ Tyhle **potřebují** „piš":
 
 Po každé netriviální změně:
 
-1. `npx tsc --noEmit` (typecheck)
-2. `npm run lint` (jakmile bude nastavený)
-3. `npm test` nebo `vitest run` (jakmile budou testy)
-4. Ohlas výsledek: „X / Y prošlo, 0 selhalo" nebo „selhalo na Z, chyba: …".
+1. `npx tsc --noEmit` (typecheck rychlý)
+2. **`npx tsc -b` (build mode — strict overload check, to co používá Vercel).
+   `--noEmit` typové chyby ignoruje skrz `moduleResolution: bundler`. Vždy
+   ověřit OBA před commitem, hlavně po editaci `src/lib/modernPresets.ts`
+   (TSL has strict overload resolution).**
+3. `npm run lint` (jakmile bude nastavený)
+4. `npm test` nebo `vitest run` (jakmile budou testy)
+5. Ohlas výsledek: „X / Y prošlo, 0 selhalo" nebo „selhalo na Z, chyba: …".
 
 Pokud test musí selhat kvůli změně, **ukaž diff testu a vysvětli proč** předtím,
 než ho upravíš. Nikdy tiše neuprav test, aby procházel.
@@ -198,6 +202,16 @@ příští session zase trefila. Formát: krátký bullet point + datum.
   (žádný shader compile error v konzoli, jen default material behavior).
   Důkaz: `node_modules/three/examples/jsm/modifiers/CurveModifierGPU.js`.
   Vzor: `material.positionNode = Fn(() => { return positionLocal.add(...) })()`.
+- **2026-05-29** — **TSL `vec3(a, a, a)` může selhat na `tsc -b` strict overload
+  resolution** i když `tsc --noEmit` projde. Symptom: `error TS2769: No overload
+  matches this call. Argument of type 'Node<"vec3">' is not assignable to
+  parameter of type 'number | undefined'`. Příčina: `UniformNode = any` v TSL
+  declarations + multi-step Node chain (e.g. `clamp(...).mul(uniforms.high)`)
+  propaguje typové informace tak, že strict overload odmítá. **Workaround:**
+  místo `vec3(scalar, scalar, scalar)` použít `targetVec3.add(scalar)` — TSL
+  podporuje broadcast vec3+scalar a typově to projde čistě. Stalo se v Tunnel
+  presetu (Fáze 4.9), zachytil to Vercel build (tsc -b) ne lokální --noEmit.
+  Lessons: vždy spustit `tsc -b` před push, jen `--noEmit` nestačí.
 - **2026-05-28** — `npm install` nikdy nespouštět v sandboxu (Linux x64), když
   uživatel pracuje na Macu (Darwin arm64). Vite 8 + Rolldown vyžaduje
   platformně-specifickou nativní binárku (`@rolldown/binding-darwin-arm64`).

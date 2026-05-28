@@ -552,7 +552,8 @@ export const tunnel: ModernPreset = {
         .mul(pattern.mul(0.9).add(0.2))
         .mul(beatBoost)
         .mul(centerFade)
-      return litColor.add(vec3(sparkle, sparkle, sparkle))
+      // sparkle je float scalar — vec3+scalar broadcast vyrobí stejnou hodnotu na všech kanálech.
+      return litColor.add(sparkle)
     })()
 
     const plane = new THREE.Mesh(geometry, material)
