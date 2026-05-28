@@ -151,6 +151,11 @@ než ho upravíš. Nikdy tiše neuprav test, aby procházel.
 Sem patří **neobvyklá** zjištění, na která narazíme během vývoje a která by
 příští session zase trefila. Formát: krátký bullet point + datum.
 
+- **2026-05-28** — **Three.js r180+ NEMÁ bundled TS types** (žádné `types` pole
+  v package.json). Pro TypeScript je nutno `npm i -D @types/three`.
+  Pozor: `tsc --noEmit` chybu **nezachytí** (přes `moduleResolution: bundler`
+  treats missing types jako `any`), ale `tsc -b` (build mode, který používá
+  Vercel) ano. Vždy po přidání nové dependency ověřit i `tsc -b`, ne jen `tsc --noEmit`.
 - **2026-05-28** — **Modern export benchmark (M-series Mac, 4min Suno track,
   Sphere Distortion preset, 1080p60 H.264 12 Mbps):**
   Tempo cca **230 snímků/s** = **~3.8× rychlejší než real-time**. Pre-computed
