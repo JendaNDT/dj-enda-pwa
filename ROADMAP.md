@@ -119,10 +119,10 @@ S = malá změna (~1 h), M = středně velká (~2–3 h), L = velká (~5+ h).
 
 | # | Bod | Velikost |
 |---|---|---|
-| 4.4 | Custom prompt per AI keyframe — modal s textovým inputem v každém slotu | M |
+| 4.4 | Custom prompt per AI keyframe — modal s textovým inputem v každém slotu ✅ done | M |
 | 4.5 | **Desktop wide layout + plná responzivita** — refactor App.tsx na grid (sidebar + main canvas), využití celé šířky monitoru, breakpointy pro mobil ✅ done | L |
-| 4.6 | Keyboard shortcuts — Space = play/pause, N/P = next/prev preset, R = random, F = fullscreen, / = focus search | S |
-| 4.7 | Reset AI cache tlačítko + indikátor využití (kolik položek je cachováno) | S |
+| 4.6 | Keyboard shortcuts — Space = play/pause, N/P = next/prev preset, R = random, F = fullscreen, / = focus search ✅ done | S |
+| 4.7 | Reset AI cache tlačítko + indikátor využití (kolik položek je cachováno) ✅ done | S |
 
 ### Větší upgrade
 

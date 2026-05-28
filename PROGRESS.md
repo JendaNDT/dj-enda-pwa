@@ -4,12 +4,13 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 4 — Round 1 + Round 2 hotové
-**Aktuální bod:** 4.1 + 4.2 + 4.3 + 4.5 hotové. Desktop wide layout refactor
-App.tsx hotov, využívá plnou šířku monitoru se sidebarem (controls +
-soubor + export), na mobilu stack.
-**Příští krok:** **Round 3 — UX dotahy** (4.4 custom prompt per AI keyframe,
-4.6 keyboard shortcuts, 4.7 reset AI cache). Před tím commit + push 4.5.
+**Aktuální fáze:** Fáze 4 — Round 1 + Round 2 + Round 3 hotové
+**Aktuální bod:** 4.1 + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 hotové. Z 13 bodů
+Fáze 4 zbývá: 4.8 (post-export thumbnail), 4.9 (víc Modern presetů),
+4.10 (HF model dropdown), 4.11 (PWA install prompt), 4.12 (intro/outro
+credits), 4.13 (watermark).
+**Příští krok:** **Round 4 — Power features** (4.8 + 4.9 + 4.10). Před tím
+commit + push Round 3.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -20,6 +21,59 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 4.6** Keyboard shortcuts + help overlay:
+  - `src/types/visualizerHandle.ts` — nový interface `VisualizerHandle`
+    pro imperative API: `togglePlayPause`, `nextPreset`, `prevPreset`,
+    `randomPreset`, optional `focusSearch` (jen Classic).
+  - **`Visualizer.tsx` (Classic)** — refactored na `forwardRef` +
+    `useImperativeHandle`. Implementuje všechny metody včetně `focusSearch`,
+    který deleguje na PresetCombobox přes nový ref.
+  - **`ThreeVisualizer.tsx` (Modern)** — také forwardRef. `focusSearch`
+    je undefined (Modern používá nativní `<select>`, ne combobox).
+  - **`PresetCombobox.tsx`** — forwardRef + `useImperativeHandle` exposes
+    `focus()`, který fokusuje input a otevře dropdown.
+  - **`App.tsx`** — globální `window keydown` handler s tabulkou shortcutů
+    `SHORTCUTS`. Implementuje: Mezerník (play/pause), N/P (next/prev preset),
+    R (random), F (fullscreen vizualizér container přes `requestFullscreen`),
+    `/` (focus search, jen Classic), `?` (toggle help), Esc (zavřít help).
+    Skipped když je focus v inputu/textarea/select — výjimka Esc vždy projde.
+  - **Fullscreen container** — nový `visualizerContainerRef` div obalí
+    vizualizér; F volá `requestFullscreen()` na něm.
+  - **Help overlay** — modal s `<kbd>` značkami pro každou zkratku, otevírá
+    se přes `?` klávesu nebo přes „?" tlačítko v top baru. Click mimo modal /
+    Esc zavírá.
+
+- **Fáze 4.4** Custom prompt per AI keyframe:
+  - `AiHybrid.tsx` — `Keyframe` interface rozšířený o optional `customPrompt`.
+    Při generování se použije `kf.customPrompt?.trim() || kf.prompt` (custom
+    má přednost; prázdný/whitespace fallne zpět na defaultní).
+  - **Edit button** v každém slotu (top-left), `pencil` ikona. Fialově
+    obarvený když slot už má custom prompt (viditelný i bez hoveru, aby uživatel
+    poznal, že je tam override). Bez customu je hidden until hover.
+  - **„Custom" badge** v pravém dolním rohu slotu, když je custom prompt
+    aktivní.
+  - **Modal** s `<textarea rows={6}>`, předvyplněný defaultním promptem nebo
+    existujícím customem. Save / Cancel / „Reset na defaultní" tlačítka.
+    Click mimo modal zavírá bez uložení. Modal pokrývá viewport s `bg-black/80`.
+  - Změna stylu (style dropdown) přepíše jen `prompt` (default), `customPrompt`
+    se zachová — uživatelův ruční override je silnější než globální styl.
+
+- **Fáze 4.7** Reset AI cache + indikátor:
+  - `src/lib/aiCache.ts` — nový `getAiCacheStats()` vrací `{ entries, keyframes,
+    totalBytes }`. Implementace přes `IDBObjectStore.openCursor()` (musí projít
+    všechny entries, ale jen pro AI mode UI, takže OK).
+  - `AiHybrid.tsx` — nová karta „AI cache" dole se statusem:
+    * Prázdný cache → vysvětlující text „Cache je prázdná. Vygenerované
+      keyframes se sem ukládají automaticky a při dalším otevření stejného
+      souboru + stylu se načtou okamžitě."
+    * Plný cache → „N záznam(y/ů) · M keyframes · X.X MB" (česká pluralizace
+      pro 1 / 2-4 / 5+).
+    * „Vyčistit cache" tlačítko (červené) — viditelné jen když máme entries.
+      `window.confirm()` před smazáním. Po clearu refresh stats + reset
+      `cacheStatus` na 'miss'.
+  - Stats refresh přes `useEffect([cacheStatus])` — když přibyde / ubude
+    cache entry (hit po batch generate, miss po clear), stats se přepočítají.
 
 - **Fáze 4.5** Desktop wide layout + plná responzivita:
   - **`src/App.tsx` kompletně přepsaný** — z původního centrovaného `max-w-xl`

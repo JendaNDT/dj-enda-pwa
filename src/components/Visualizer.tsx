@@ -1,9 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import butterchurn from '@webamp/butterchurn'
 import butterchurnPresets from 'butterchurn-presets'
 import type { Visualizer as ButterchurnVisualizer } from '@webamp/butterchurn'
-import { PresetCombobox } from './PresetCombobox'
+import { PresetCombobox, type PresetComboboxHandle } from './PresetCombobox'
 import { useFavorites } from '../lib/favorites'
+import type { VisualizerHandle } from '../types/visualizerHandle'
 
 interface VisualizerProps {
   audioBuffer: AudioBuffer
@@ -38,17 +46,17 @@ const PRESET_KEYS = Object.keys(ALL_PRESETS).sort()
  * Po dohrání skladby (`onended`) lze přehrávání restartovat — vytvoří se nový
  * source, protože AudioBufferSourceNode je jednorázový.
  */
-export function Visualizer({
-  audioBuffer,
-  currentPreset,
-  onPresetChange,
-}: VisualizerProps) {
+export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function Visualizer(
+  { audioBuffer, currentPreset, onPresetChange },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<AudioBufferSourceNode | null>(null)
   const gainRef = useRef<GainNode | null>(null)
   const visualizerRef = useRef<ButterchurnVisualizer | null>(null)
   const animationFrameRef = useRef<number | null>(null)
+  const comboboxRef = useRef<PresetComboboxHandle | null>(null)
 
   const [status, setStatus] = useState<PlaybackStatus>('idle')
   const [volume, setVolume] = useState(0.8)
@@ -195,6 +203,40 @@ export function Visualizer({
 
   const isRunning = status === 'playing' || status === 'paused'
 
+  // Imperative API pro App.tsx keyboard shortcuts (Fáze 4.6).
+  useImperativeHandle(
+    ref,
+    (): VisualizerHandle => ({
+      togglePlayPause: () => {
+        if (status === 'playing' || status === 'paused') {
+          void togglePlayPause()
+        } else {
+          // Z idle stavu Space spustí náhled.
+          void start()
+        }
+      },
+      nextPreset: () => {
+        const idx = presetOptions.indexOf(currentPreset)
+        const next = presetOptions[(idx + 1) % presetOptions.length]
+        if (next) changePreset(next)
+      },
+      prevPreset: () => {
+        const idx = presetOptions.indexOf(currentPreset)
+        const prev = presetOptions[(idx - 1 + presetOptions.length) % presetOptions.length]
+        if (prev) changePreset(prev)
+      },
+      randomPreset: () => {
+        const rand = presetOptions[Math.floor(Math.random() * presetOptions.length)]
+        if (rand) changePreset(rand)
+      },
+      focusSearch: () => {
+        comboboxRef.current?.focus()
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status, currentPreset, presetOptions],
+  )
+
   return (
     <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800">
       <div className="text-xs uppercase tracking-wider text-neutral-500 mb-3">
@@ -247,6 +289,7 @@ export function Visualizer({
           </button>
 
           <PresetCombobox
+            ref={comboboxRef}
             options={presetOptions}
             value={currentPreset}
             onChange={changePreset}
@@ -292,4 +335,4 @@ export function Visualizer({
       )}
     </div>
   )
-}
+})

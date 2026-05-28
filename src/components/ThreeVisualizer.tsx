@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import * as THREE from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { extractFeatures, type AudioFeatures } from '../lib/audioFeatures'
@@ -11,6 +18,7 @@ import {
   type VisualizerUniforms,
 } from '../lib/modernPresets'
 import { useFavorites } from '../lib/favorites'
+import type { VisualizerHandle } from '../types/visualizerHandle'
 
 interface ThreeVisualizerProps {
   audioBuffer: AudioBuffer
@@ -39,11 +47,10 @@ const TARGET_FPS = 60
  *     vepisuje `uniform.value = …`.
  *   - Preset selector dropdown ve UI (po startu).
  */
-export function ThreeVisualizer({
-  audioBuffer,
-  currentPresetId,
-  onPresetChange,
-}: ThreeVisualizerProps) {
+export const ThreeVisualizer = forwardRef<VisualizerHandle, ThreeVisualizerProps>(function ThreeVisualizer(
+  { audioBuffer, currentPresetId, onPresetChange },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   const lastFrameTimeRef = useRef<number>(0)
@@ -361,6 +368,40 @@ export function ThreeVisualizer({
 
   const isRunning = status === 'playing' || status === 'paused'
 
+  // Imperative API pro App.tsx keyboard shortcuts (Fáze 4.6).
+  useImperativeHandle(
+    ref,
+    (): VisualizerHandle => ({
+      togglePlayPause: () => {
+        if (status === 'playing' || status === 'paused') {
+          void togglePlayPause()
+        } else if (status === 'idle') {
+          // Space z idle stavu spustí náhled (vyžaduje user gesture).
+          void start()
+        }
+      },
+      nextPreset: () => {
+        const idx = MODERN_PRESETS.findIndex((p) => p.id === currentPresetId)
+        const next = MODERN_PRESETS[(idx + 1) % MODERN_PRESETS.length]
+        if (next) onPresetChange(next.id)
+      },
+      prevPreset: () => {
+        const idx = MODERN_PRESETS.findIndex((p) => p.id === currentPresetId)
+        const prev =
+          MODERN_PRESETS[(idx - 1 + MODERN_PRESETS.length) % MODERN_PRESETS.length]
+        if (prev) onPresetChange(prev.id)
+      },
+      randomPreset: () => {
+        const rand =
+          MODERN_PRESETS[Math.floor(Math.random() * MODERN_PRESETS.length)]
+        if (rand) onPresetChange(rand.id)
+      },
+      // Modern nemá search input; focusSearch zůstává undefined.
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status, currentPresetId],
+  )
+
   return (
     <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800">
       <div className="flex items-center justify-between mb-3">
@@ -521,4 +562,4 @@ export function ThreeVisualizer({
       </div>
     </div>
   )
-}
+})

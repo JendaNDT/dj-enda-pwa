@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AudioUpload } from './components/AudioUpload'
 import { Visualizer, pickInitialPreset } from './components/Visualizer'
 import { ThreeVisualizer } from './components/ThreeVisualizer'
@@ -11,8 +11,24 @@ import {
   describeChannels,
 } from './lib/audio'
 import { DEFAULT_PRESET_ID } from './lib/modernPresets'
+import type { VisualizerHandle } from './types/visualizerHandle'
 
 type VisualizerMode = 'classic' | 'modern' | 'ai'
+
+/**
+ * Tabulka klávesových zkratek — zobrazena v help overlay (Fáze 4.6).
+ * Pořadí má smysl: nejčastější akce nahoře.
+ */
+const SHORTCUTS: { keys: string; description: string }[] = [
+  { keys: 'Mezerník', description: 'Play / Pauza' },
+  { keys: 'N', description: 'Další preset' },
+  { keys: 'P', description: 'Předchozí preset' },
+  { keys: 'R', description: 'Náhodný preset' },
+  { keys: 'F', description: 'Fullscreen vizualizér' },
+  { keys: '/', description: 'Hledat preset (jen Classic)' },
+  { keys: '?', description: 'Zobrazit / skrýt tuto nápovědu' },
+  { keys: 'Esc', description: 'Zavřít fullscreen / nápovědu' },
+]
 
 function formatFileSize(bytes: number): string {
   const mb = bytes / 1024 / 1024
@@ -28,9 +44,102 @@ function App() {
     useState<string>(DEFAULT_PRESET_ID)
   const [visualizerMode, setVisualizerMode] =
     useState<VisualizerMode>('classic')
+  const [showHelp, setShowHelp] = useState(false)
   const { buffer, isLoading, error } = useAudioDecoder(audioFile)
 
+  // Ref na aktuální vizualizér — imperative API pro keyboard shortcuts.
+  // Mode-specific ref se nastavuje při renderu, App.tsx z něj volá při keydown.
+  const visualizerHandleRef = useRef<VisualizerHandle | null>(null)
+  // Ref na kontejner vizualizéru pro fullscreen toggle.
+  const visualizerContainerRef = useRef<HTMLDivElement | null>(null)
+
   const reset = () => setAudioFile(null)
+
+  const toggleFullscreen = () => {
+    const el = visualizerContainerRef.current
+    if (!el) return
+    if (document.fullscreenElement) {
+      void document.exitFullscreen()
+    } else {
+      void el.requestFullscreen().catch(() => {
+        // Browser/permission denied — tiše ignorujeme.
+      })
+    }
+  }
+
+  // ─── Globální keyboard shortcuts (Fáze 4.6) ──────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Skip když uživatel píše v inputu / textareu / contenteditable.
+      const target = e.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          target.isContentEditable
+        ) {
+          // Výjimka: Esc vždy projde — zavře help i fullscreen ze vstupů.
+          if (e.key !== 'Escape') return
+        }
+      }
+
+      // Esc — zavřít help nebo fullscreen.
+      if (e.key === 'Escape') {
+        if (showHelp) {
+          e.preventDefault()
+          setShowHelp(false)
+        }
+        return
+      }
+
+      // ? — toggle help (shift+/ na americké klávesnici, jen / na české…).
+      if (e.key === '?') {
+        e.preventDefault()
+        setShowHelp((s) => !s)
+        return
+      }
+
+      const handle = visualizerHandleRef.current
+      if (!handle) return
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault()
+          handle.togglePlayPause()
+          break
+        case 'n':
+        case 'N':
+          e.preventDefault()
+          handle.nextPreset()
+          break
+        case 'p':
+        case 'P':
+          e.preventDefault()
+          handle.prevPreset()
+          break
+        case 'r':
+        case 'R':
+          e.preventDefault()
+          handle.randomPreset()
+          break
+        case 'f':
+        case 'F':
+          e.preventDefault()
+          toggleFullscreen()
+          break
+        case '/':
+          if (handle.focusSearch) {
+            e.preventDefault()
+            handle.focusSearch()
+          }
+          break
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [showHelp])
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-neutral-950 via-neutral-950 to-purple-950/30 text-neutral-100">
@@ -72,23 +181,40 @@ function App() {
             </div>
           </div>
 
-          {/* Disclaimer pill — privacy uklidnění */}
-          <div className="px-4 py-2 rounded-full bg-emerald-950/30 border border-emerald-900/50 flex items-center gap-2 text-xs text-emerald-300/90">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4 shrink-0"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div className="flex items-center gap-2">
+            {/* Help tlačítko — otevře overlay s klávesovými zkratkami. */}
+            <button
+              type="button"
+              onClick={() => setShowHelp(true)}
+              className="h-9 w-9 flex items-center justify-center rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors"
+              aria-label="Klávesové zkratky"
+              title="Klávesové zkratky (?)"
             >
-              <rect x="3" y="11" width="18" height="11" rx="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-            <span>
-              Vše běží jen v prohlížeči — žádný server, žádný upload.
-            </span>
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </button>
+
+            {/* Disclaimer pill — privacy uklidnění */}
+            <div className="px-4 py-2 rounded-full bg-emerald-950/30 border border-emerald-900/50 flex items-center gap-2 text-xs text-emerald-300/90">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <span>
+                Vše běží jen v prohlížeči — žádný server, žádný upload.
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -164,29 +290,34 @@ function App() {
                   </div>
                 )}
 
-                {/* Vizualizér — full main column width (canvas má aspect-video). */}
-                {buffer && visualizerMode === 'classic' && (
-                  <Visualizer
-                    audioBuffer={buffer}
-                    currentPreset={currentPreset}
-                    onPresetChange={setCurrentPreset}
-                  />
-                )}
+                {/* Vizualizér — full main column width (canvas má aspect-video).
+                    Container drží ref pro fullscreen toggle (F klávesa). */}
+                <div ref={visualizerContainerRef} className="bg-black/0">
+                  {buffer && visualizerMode === 'classic' && (
+                    <Visualizer
+                      ref={visualizerHandleRef}
+                      audioBuffer={buffer}
+                      currentPreset={currentPreset}
+                      onPresetChange={setCurrentPreset}
+                    />
+                  )}
 
-                {buffer && visualizerMode === 'modern' && (
-                  <ThreeVisualizer
-                    audioBuffer={buffer}
-                    currentPresetId={modernPresetId}
-                    onPresetChange={setModernPresetId}
-                  />
-                )}
+                  {buffer && visualizerMode === 'modern' && (
+                    <ThreeVisualizer
+                      ref={visualizerHandleRef}
+                      audioBuffer={buffer}
+                      currentPresetId={modernPresetId}
+                      onPresetChange={setModernPresetId}
+                    />
+                  )}
 
-                {buffer && visualizerMode === 'ai' && (
-                  <AiHybrid
-                    audioBuffer={buffer}
-                    audioFilename={audioFile.name}
-                  />
-                )}
+                  {buffer && visualizerMode === 'ai' && (
+                    <AiHybrid
+                      audioBuffer={buffer}
+                      audioFilename={audioFile.name}
+                    />
+                  )}
+                </div>
               </div>
 
               {/* SIDEBAR — kompaktní karta soubor + audio data, pak export controls. */}
@@ -260,6 +391,51 @@ function App() {
           )}
         </div>
       </main>
+
+      {/* Help overlay — klávesové zkratky (Fáze 4.6). */}
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-neutral-900 border border-neutral-800 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase tracking-wider text-neutral-500">
+                Klávesové zkratky
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHelp(false)}
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+                aria-label="Zavřít"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <dl className="space-y-2 text-sm">
+              {SHORTCUTS.map((s) => (
+                <div key={s.keys} className="flex items-center justify-between gap-4">
+                  <dt className="text-neutral-300">{s.description}</dt>
+                  <dd>
+                    <kbd className="px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-neutral-100 text-xs font-mono">
+                      {s.keys}
+                    </kbd>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="text-xs text-neutral-500 pt-2 border-t border-neutral-800">
+              Zkratky fungují kdekoliv na stránce kromě textových polí.
+              Mezerník v idle stavu spustí náhled.
+            </p>
+          </div>
+        </div>
+      )}
 
       <footer className="w-full px-4 md:px-8 lg:px-12 py-6 border-t border-neutral-900/80">
         <div className="mx-auto max-w-[1600px] flex items-center gap-3 text-xs text-neutral-600">

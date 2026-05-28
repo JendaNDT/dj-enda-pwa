@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 interface PresetComboboxProps {
   options: string[]
@@ -10,6 +17,14 @@ interface PresetComboboxProps {
   favorites?: Set<string>
   /** Callback pro toggle oblíbený / neoblíbený. */
   onToggleFavorite?: (key: string) => void
+}
+
+/**
+ * Imperative API pro PresetCombobox — focus search input. Použito v App.tsx
+ * keyboard shortcuts (klávesa `/`).
+ */
+export interface PresetComboboxHandle {
+  focus: () => void
 }
 
 /**
@@ -28,15 +43,18 @@ interface PresetComboboxProps {
  * Oblíbené presety se zobrazují v separátní sekci nahoře, pokud query je prázdný.
  * Při query > 0 se zobrazí ploše bez separace (jen hvězdička u row zůstává).
  */
-export function PresetCombobox({
-  options,
-  value,
-  onChange,
-  className = '',
-  placeholder = 'Hledat preset…',
-  favorites,
-  onToggleFavorite,
-}: PresetComboboxProps) {
+export const PresetCombobox = forwardRef<PresetComboboxHandle, PresetComboboxProps>(function PresetCombobox(
+  {
+    options,
+    value,
+    onChange,
+    className = '',
+    placeholder = 'Hledat preset…',
+    favorites,
+    onToggleFavorite,
+  },
+  ref,
+) {
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [highlightedIdx, setHighlightedIdx] = useState(0)
@@ -44,6 +62,18 @@ export function PresetCombobox({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLUListElement | null>(null)
+
+  // Imperative API — App.tsx ho používá pro klávesovou zkratku „/".
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => {
+        inputRef.current?.focus()
+        setIsOpen(true)
+      },
+    }),
+    [],
+  )
 
   // Flat list pro filtr (case-insensitive word-match).
   const filtered = useMemo(() => {
@@ -248,4 +278,4 @@ export function PresetCombobox({
       )}
     </div>
   )
-}
+})

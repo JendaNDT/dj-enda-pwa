@@ -104,3 +104,47 @@ export async function clearAiCache(): Promise<void> {
     // ignore
   }
 }
+
+export interface AiCacheStats {
+  /** Počet cachovaných entries (audio × styl kombinace). */
+  entries: number
+  /** Celkový počet keyframe blobů napříč entries. */
+  keyframes: number
+  /** Celková velikost v bajtech (součet `blob.size` napříč entries). */
+  totalBytes: number
+}
+
+/**
+ * Spočítá statistiku cache — počet entries, keyframes a celkovou velikost.
+ * Pomalé pro velký cache (musí projít všechny entries), ale stačí pro UI
+ * indikátor zobrazený jen v AI mode.
+ */
+export async function getAiCacheStats(): Promise<AiCacheStats> {
+  const empty: AiCacheStats = { entries: 0, keyframes: 0, totalBytes: 0 }
+  try {
+    const db = await openDb()
+    return new Promise<AiCacheStats>((resolve) => {
+      const stats: AiCacheStats = { entries: 0, keyframes: 0, totalBytes: 0 }
+      const tx = db.transaction(STORE_NAME, 'readonly')
+      const store = tx.objectStore(STORE_NAME)
+      const cursorReq = store.openCursor()
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result
+        if (cursor) {
+          const entry = cursor.value as CachedEntry
+          stats.entries += 1
+          stats.keyframes += entry.blobs.length
+          for (const b of entry.blobs) {
+            stats.totalBytes += b.size
+          }
+          cursor.continue()
+        } else {
+          resolve(stats)
+        }
+      }
+      cursorReq.onerror = () => resolve(empty)
+    })
+  } catch {
+    return empty
+  }
+}

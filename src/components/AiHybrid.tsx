@@ -11,9 +11,13 @@ import {
   hashAudioBuffer,
   getCachedKeyframes,
   setCachedKeyframes,
+  clearAiCache,
+  getAiCacheStats,
+  type AiCacheStats,
 } from '../lib/aiCache'
 import { AiVisualizer } from './AiVisualizer'
 import { ExportButton } from './ExportButton'
+import { formatBytes } from '../lib/export'
 
 interface AiHybridPropsWithFilename {
   audioBuffer: AudioBuffer
@@ -24,7 +28,11 @@ interface AiHybridProps extends AiHybridPropsWithFilename {}
 
 interface Keyframe {
   id: string
+  /** Default prompt vygenerovaný ze style + section. */
   prompt: string
+  /** Custom prompt zadaný uživatelem v modal editoru. Pokud nastavený,
+   *  použije se místo defaultního při generování. */
+  customPrompt?: string
   imageUrl: string | null
   status: 'empty' | 'generating' | 'ready' | 'error'
   errorMsg?: string
@@ -102,8 +110,64 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
   const [cacheStatus, setCacheStatus] = useState<
     'unknown' | 'checking' | 'hit' | 'miss'
   >('unknown')
+  const [cacheStats, setCacheStats] = useState<AiCacheStats | null>(null)
+  /** Index slotu, jehož prompt právě editujeme v modálu. `null` = modal zavřený. */
+  const [editPromptIdx, setEditPromptIdx] = useState<number | null>(null)
+  /** Pracovní hodnota textarea v modálu (commit do `customPrompt` až při Save). */
+  const [editPromptDraft, setEditPromptDraft] = useState<string>('')
   const audioHashRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Refresh cache stats při mountu + po každé změně stavu cache.
+  const refreshCacheStats = async () => {
+    const stats = await getAiCacheStats()
+    setCacheStats(stats)
+  }
+  useEffect(() => {
+    void refreshCacheStats()
+  }, [cacheStatus])
+
+  const handleClearCache = async () => {
+    const confirmed = window.confirm(
+      'Opravdu chceš vymazat AI cache? Všechny generované keyframes pro všechny soubory a styly budou pryč. Tato akce je nevratná.',
+    )
+    if (!confirmed) return
+    await clearAiCache()
+    setCacheStatus('miss')
+    await refreshCacheStats()
+  }
+
+  /** Otevřít modal pro editaci promptu konkrétního slotu. */
+  const openPromptEditor = (idx: number) => {
+    const kf = keyframes[idx]
+    setEditPromptDraft(kf.customPrompt ?? kf.prompt)
+    setEditPromptIdx(idx)
+  }
+
+  const closePromptEditor = () => {
+    setEditPromptIdx(null)
+    setEditPromptDraft('')
+  }
+
+  const savePromptEditor = () => {
+    if (editPromptIdx === null) return
+    const draft = editPromptDraft.trim()
+    setKeyframes((prev) =>
+      prev.map((k, i) =>
+        i === editPromptIdx
+          ? { ...k, customPrompt: draft.length > 0 ? draft : undefined }
+          : k,
+      ),
+    )
+    closePromptEditor()
+  }
+
+  const resetPromptEditor = () => {
+    // Reset = smazat custom prompt, vrátit se k defaultnímu (z buildPrompt).
+    if (editPromptIdx === null) return
+    const kf = keyframes[editPromptIdx]
+    setEditPromptDraft(kf.prompt)
+  }
 
   useEffect(() => {
     setStoredToken(getHfToken())
@@ -193,12 +257,13 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
     setStyleId(newStyleId)
     const newStyle =
       STYLE_OPTIONS.find((s) => s.id === newStyleId) ?? STYLE_OPTIONS[0]
-    // Reset všechny keyframes na nový styl (pokud nejsou hotové)
+    // Default prompt přepsat na nový styl, custom prompt necháme — uživatelův
+    // ruční override má přednost a změna stylu ho nesmazne (přesto se zobrazí
+    // styl v UI textovém preview).
     setKeyframes((prev) =>
       prev.map((kf, i) => ({
         ...kf,
         prompt: buildPrompt(newStyle, i + 1),
-        // Necháme image URL pokud uživatel chce ho behold; nová generace ho přepíše.
       })),
     )
   }
@@ -212,7 +277,9 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
     )
 
     try {
-      const blob = await generateImage(kf.prompt, {
+      // Custom prompt má přednost před defaultním ze style + section.
+      const effectivePrompt = kf.customPrompt?.trim() || kf.prompt
+      const blob = await generateImage(effectivePrompt, {
         token: storedToken,
         signal: abortRef.current?.signal,
       })
@@ -448,6 +515,38 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
                 </div>
               )}
 
+              {/* Edit prompt button (vždy dostupný, vlevo nahoře). */}
+              {!isGenerating && kf.status !== 'generating' && (
+                <button
+                  type="button"
+                  onClick={() => openPromptEditor(i)}
+                  className={[
+                    'absolute top-1.5 left-1.5 h-7 w-7 rounded-full text-white transition-all flex items-center justify-center',
+                    kf.customPrompt
+                      ? 'bg-purple-600 opacity-100'
+                      : 'bg-black/70 hover:bg-purple-600 opacity-0 group-hover:opacity-100',
+                  ].join(' ')}
+                  title={
+                    kf.customPrompt
+                      ? 'Custom prompt aktivní — kliknutím uprav'
+                      : 'Upravit prompt'
+                  }
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                </button>
+              )}
+
               {/* Hover regenerate button (jen pro ready/error) */}
               {(kf.status === 'ready' || kf.status === 'error') &&
                 !isGenerating && (
@@ -476,6 +575,13 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
               <div className="absolute bottom-1.5 left-1.5 text-[9px] uppercase tracking-wider text-white/90 bg-black/60 px-1.5 rounded">
                 {formatSection(i, audioBuffer.duration)}
               </div>
+
+              {/* Custom prompt badge (vpravo dole) */}
+              {kf.customPrompt && (
+                <div className="absolute bottom-1.5 right-1.5 text-[9px] uppercase tracking-wider text-purple-100 bg-purple-700/80 px-1.5 rounded">
+                  Custom
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -557,9 +663,124 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
         </div>
       )}
 
+      {/* AI cache karta — indikátor využití + reset tlačítko. */}
+      <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors hover:border-neutral-700">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs uppercase tracking-wider text-neutral-500">
+            AI cache
+          </div>
+          {cacheStats && cacheStats.entries > 0 && (
+            <button
+              type="button"
+              onClick={handleClearCache}
+              disabled={isGenerating}
+              className="text-xs text-red-400 hover:text-red-300 disabled:text-neutral-600 disabled:cursor-not-allowed transition-colors"
+            >
+              Vyčistit cache
+            </button>
+          )}
+        </div>
+        {cacheStats === null ? (
+          <p className="text-xs text-neutral-500">Načítám stav cache…</p>
+        ) : cacheStats.entries === 0 ? (
+          <p className="text-xs text-neutral-500">
+            Cache je prázdná. Vygenerované keyframes se sem ukládají automaticky
+            a při dalším otevření stejného souboru + stylu se načtou okamžitě.
+          </p>
+        ) : (
+          <p className="text-xs text-neutral-400">
+            <strong className="text-neutral-200">{cacheStats.entries}</strong>{' '}
+            {cacheStats.entries === 1 ? 'záznam' : cacheStats.entries < 5 ? 'záznamy' : 'záznamů'}{' '}
+            ·{' '}
+            <strong className="text-neutral-200">{cacheStats.keyframes}</strong>{' '}
+            keyframes ·{' '}
+            <strong className="text-neutral-200">
+              {formatBytes(cacheStats.totalBytes)}
+            </strong>
+          </p>
+        )}
+      </div>
+
       <p className="text-xs text-neutral-500 text-center">
         Fáze 3.3 — AI náhled s crossfade mezi keyframes. Export AI módu přijde v 3.4+.
       </p>
+
+      {/* Custom prompt modal (Fáze 4.4) */}
+      {editPromptIdx !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={closePromptEditor}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl bg-neutral-900 border border-neutral-800 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-neutral-500">
+                  Custom prompt · keyframe {editPromptIdx + 1} / {KEYFRAME_COUNT}
+                </div>
+                <div className="text-sm text-neutral-400 mt-1">
+                  Interval:{' '}
+                  <span className="font-mono">
+                    {formatSection(editPromptIdx, audioBuffer.duration)}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closePromptEditor}
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+                aria-label="Zavřít"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <textarea
+              value={editPromptDraft}
+              onChange={(e) => setEditPromptDraft(e.target.value)}
+              rows={6}
+              autoFocus
+              placeholder="Popiš, co má AI nakreslit. Detail, barvy, atmosféra, styl…"
+              className="w-full px-3 py-2 rounded-lg bg-neutral-950 border border-neutral-700 text-sm text-neutral-100 font-mono focus:outline-none focus:border-purple-500 resize-vertical"
+            />
+
+            <div className="text-xs text-neutral-500">
+              <span className="text-neutral-400">Tip:</span> ponecháš prázdné = použije se defaultní prompt podle vybraného stylu.
+              Při generování (nebo regenerování) tohoto slotu se použije tento custom prompt.
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={resetPromptEditor}
+                className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                Reset na defaultní prompt
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={closePromptEditor}
+                  className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-sm transition-colors"
+                >
+                  Zrušit
+                </button>
+                <button
+                  type="button"
+                  onClick={savePromptEditor}
+                  className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
+                >
+                  Uložit prompt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
