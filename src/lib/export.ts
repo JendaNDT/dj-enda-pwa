@@ -94,10 +94,59 @@ function resolveQuality(id: string | undefined): ExportQuality {
   )
 }
 
+/**
+ * Volitelné oříznutí audia pro export — uživatel může vybrat jen část skladby
+ * přes slidery start/end v ExportButton confirm dialogu.
+ *
+ * Min délka výstupu = 1 sekunda. Pokud `range` chybí, exportuje se celá skladba.
+ */
+export interface ExportRange {
+  startSec: number
+  endSec: number
+}
+
+/**
+ * Vrátí trimnutý AudioBuffer. Pokud rozsah pokrývá celou skladbu (s tolerance
+ * < 0.001 s na obou koncích), vrátí původní buffer beze změny — žádné zbytečné
+ * kopírování paměti.
+ *
+ * Pokud `range` chybí nebo je rozsah neplatný, vrátí původní buffer.
+ */
+export function trimAudioBuffer(
+  buffer: AudioBuffer,
+  range?: ExportRange,
+): AudioBuffer {
+  if (!range) return buffer
+  const { startSec, endSec } = range
+  const duration = buffer.duration
+  const clampedStart = Math.max(0, Math.min(startSec, duration))
+  const clampedEnd = Math.max(clampedStart, Math.min(endSec, duration))
+  if (clampedEnd - clampedStart < 0.001) return buffer
+  if (clampedStart < 0.001 && duration - clampedEnd < 0.001) return buffer
+
+  const sampleRate = buffer.sampleRate
+  const startSample = Math.floor(clampedStart * sampleRate)
+  const endSample = Math.min(Math.floor(clampedEnd * sampleRate), buffer.length)
+  const frameCount = endSample - startSample
+  // OfflineAudioContext.createBuffer je dostupný i bez instance ctx přes window.
+  // Použijeme dočasný AudioContext jen na createBuffer (neprobudí playback).
+  const tmpCtx = new AudioContext({ sampleRate })
+  const out = tmpCtx.createBuffer(buffer.numberOfChannels, frameCount, sampleRate)
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const srcData = buffer.getChannelData(ch)
+    out.copyToChannel(srcData.subarray(startSample, endSample), ch)
+  }
+  // Uzavřít tmpCtx asynchronně — buffer je nezávislý.
+  tmpCtx.close().catch(() => {})
+  return out
+}
+
 export interface ExportOptions {
   audioBuffer: AudioBuffer
   presetKey: string
   qualityId?: string
+  /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
+  range?: ExportRange
   onProgress: (progress: ExportProgress) => void
   signal?: AbortSignal
 }
@@ -107,6 +156,8 @@ export interface ExportModernOptions {
   /** ID Modern presetu (z `MODERN_PRESETS`). */
   presetId: string
   qualityId?: string
+  /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
+  range?: ExportRange
   onProgress: (progress: ExportProgress) => void
   signal?: AbortSignal
 }
@@ -116,6 +167,8 @@ export interface ExportAiOptions {
   /** URL všech 8 AI keyframes (musí být ready). */
   imageUrls: ReadonlyArray<string>
   qualityId?: string
+  /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
+  range?: ExportRange
   onProgress: (progress: ExportProgress) => void
   signal?: AbortSignal
 }
@@ -139,12 +192,15 @@ export interface ExportAiOptions {
  * uživatel nic neslyší.
  */
 export async function exportVideo(options: ExportOptions): Promise<Blob> {
-  const { audioBuffer, presetKey, qualityId, onProgress, signal } = options
+  const { audioBuffer: srcBuffer, presetKey, qualityId, range, onProgress, signal } = options
   const quality = resolveQuality(qualityId)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
   const EXPORT_FPS = quality.fps
   const VIDEO_BITRATE = quality.videoBitrate
+
+  // Pokud uživatel zvolil trim, oříznout buffer na požadovaný rozsah.
+  const audioBuffer = trimAudioBuffer(srcBuffer, range)
 
   const duration = audioBuffer.duration
   const totalFrames = Math.floor(duration * EXPORT_FPS)
@@ -286,12 +342,15 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
 export async function exportVideoModern(
   options: ExportModernOptions,
 ): Promise<Blob> {
-  const { audioBuffer, presetId, qualityId, onProgress, signal } = options
+  const { audioBuffer: srcBuffer, presetId, qualityId, range, onProgress, signal } = options
   const quality = resolveQuality(qualityId)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
   const EXPORT_FPS = quality.fps
   const VIDEO_BITRATE = quality.videoBitrate
+
+  // Pokud uživatel zvolil trim, oříznout buffer na požadovaný rozsah.
+  const audioBuffer = trimAudioBuffer(srcBuffer, range)
 
   // 1. Najít preset
   const preset = getPresetById(presetId)
@@ -458,12 +517,15 @@ export async function exportVideoModern(
 export async function exportVideoAi(
   options: ExportAiOptions,
 ): Promise<Blob> {
-  const { audioBuffer, imageUrls, qualityId, onProgress, signal } = options
+  const { audioBuffer: srcBuffer, imageUrls, qualityId, range, onProgress, signal } = options
   const quality = resolveQuality(qualityId)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
   const EXPORT_FPS = quality.fps
   const VIDEO_BITRATE = quality.videoBitrate
+
+  // Pokud uživatel zvolil trim, oříznout buffer na požadovaný rozsah.
+  const audioBuffer = trimAudioBuffer(srcBuffer, range)
 
   const KEYFRAME_COUNT = 8
   const ATLAS_COLS = 4

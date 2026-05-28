@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import butterchurn from '@webamp/butterchurn'
 import butterchurnPresets from 'butterchurn-presets'
 import type { Visualizer as ButterchurnVisualizer } from '@webamp/butterchurn'
+import { PresetCombobox } from './PresetCombobox'
+import { useFavorites } from '../lib/favorites'
 
 interface VisualizerProps {
   audioBuffer: AudioBuffer
@@ -52,8 +54,11 @@ export function Visualizer({
   const [volume, setVolume] = useState(0.8)
   const [error, setError] = useState<string | null>(null)
 
-  // Memoizovaná lookup-řada pro select (jen referenční optimalizace).
+  // Memoizovaná lookup-řada pro combobox (jen referenční optimalizace).
   const presetOptions = useMemo(() => PRESET_KEYS, [])
+
+  // Oblíbené presety Classic — perzistované v localStorage.
+  const { favorites, toggle: toggleFavorite } = useFavorites('classic')
 
   // Cleanup při unmountu nebo změně audioBuffer (jiný soubor).
   useEffect(() => {
@@ -241,17 +246,15 @@ export function Visualizer({
             )}
           </button>
 
-          <select
+          <PresetCombobox
+            options={presetOptions}
             value={currentPreset}
-            onChange={(e) => changePreset(e.target.value)}
-            className="flex-1 min-w-0 h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
-          >
-            {presetOptions.map((key) => (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            ))}
-          </select>
+            onChange={changePreset}
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
+            className="flex-1 min-w-0"
+          />
+
 
           <div className="flex items-center gap-2 min-w-[140px]">
             <svg

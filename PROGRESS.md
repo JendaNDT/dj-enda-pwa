@@ -4,12 +4,11 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 3 dokončena 🎉 → **Fáze 4 plánovaná v dalším chatu**
-**Aktuální bod:** Hotová Fáze 3 + AI shader filmový upgrade (Ken Burns, parallax,
-light leaks, particles). Veřejná produkce na <https://dj-enda-pwa.vercel.app>.
-**Příští session:** Fáze 4 polish — viz `ROADMAP.md` sekce „Fáze 4".
-Doporučený první round: **4.1 + 4.2 + 4.3 (vyhledávání + oblíbené presety +
-audio trim)** jako quick wins balík.
+**Aktuální fáze:** Fáze 4 — Round 1 quick wins **DOKONČENO**
+**Aktuální bod:** 4.1 + 4.2 + 4.3 hotové. Vyhledávání, oblíbené presety
+(Classic + Modern), audio trim pro export — všechno funkční, typecheck prošel.
+**Příští krok:** **Round 2 — 4.5 Desktop wide layout refactor** (samostatná
+session, velký bod). Alternativně Round 3 (4.4 / 4.6 / 4.7 menší UX dotahy).
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -20,6 +19,65 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 4.3** Audio trim/range pro export:
+  - `src/lib/export.ts` — nový `ExportRange` typ + `trimAudioBuffer()` helper.
+    Trim používá `copyToChannel(srcData.subarray(start, end))` přes dočasný
+    `AudioContext.createBuffer`. Pokud rozsah pokrývá celou skladbu (tol < 1 ms
+    na obou koncích), vrátí původní buffer beze změny — žádné zbytečné kopie.
+  - **Tři export funkce** (`exportVideo`, `exportVideoModern`, `exportVideoAi`)
+    přijímají volitelný `range?: ExportRange`. Při exportu se buffer trimne
+    na začátku a dál pipeline pokračuje na zkráceném bufferu (totalFrames,
+    features extract, Mediabunny audio source — všechno běží na trimmed bufferu).
+  - **ExportButton.tsx** — nová „Oříznutí audia" karta nad export tlačítkem:
+    * Dva range slidery (start a end) s krokem 1 sekunda, labely mm:ss.
+    * Když start převýší end (přes safeguard MIN_TRIM_LENGTH_SECONDS = 1s),
+      druhý slider se automaticky posune. Žádné neplatné rozsahy.
+    * „Reset (celá skladba)" tlačítko viditelné jen když je rozsah trimnutý.
+    * Pod slidery: „Exportovaná část: M:SS z M:SS" + odhad velikosti
+      přepočítaný podle `effectiveDuration`.
+    * Reset trim při změně `audioBuffer` (jiný soubor) přes useEffect.
+    * Confirm dialog pro tracky > 10 min počítá s trimmed délkou, ne celou.
+  - `npx tsc --noEmit` exit 0.
+
+- **Fáze 4.2** Oblíbené presety (Classic + Modern):
+  - `src/lib/favorites.ts` — `useFavorites(kind: 'classic' | 'modern')` hook
+    s localStorage perzistencí. Storage key `dj-enda:favorites:{kind}`,
+    JSON array of preset keys. Robustní vůči korupci (invalid JSON → cleanup).
+    Sync mezi taby přes `storage` event. Vrací `{ favorites: Set, isFavorite,
+    toggle, clear }`.
+  - **PresetCombobox** rozšířený o `favorites` + `onToggleFavorite` props.
+    Když query je prázdný a máme aspoň jeden favorite, zobrazí 2 sticky sekce:
+    „Oblíbené" nahoře, „Všechny" dole. Při query > 0 ploché filtrované zobrazení.
+    Hvězdička ikonka v každém row (žlutá = oblíbený, šedá hover = neoblíbený).
+    `onMouseDown` na hvězdičce volá `stopPropagation`, aby klik nevybral řádek.
+    Keyboard navigace funguje napříč sekcemi přes flat list pro indexy.
+  - **Visualizer.tsx (Classic)** — `useFavorites('classic')`, props předány do
+    PresetCombobox. Žádná změna v App.tsx interface.
+  - **ThreeVisualizer.tsx (Modern)** — `useFavorites('modern')`, MODERN_PRESETS
+    rozdělen na `favs` + `rest` přes useMemo. Select používá `<optgroup>`
+    „Oblíbené" / „Ostatní". Samostatné kulaté hvězdička tlačítko vedle selectu
+    pro toggle aktuálního presetu. Combobox je u 3 položek overkill, optgroup
+    + standalone star button je čistší řešení.
+  - `npx tsc --noEmit` exit 0.
+
+- **Fáze 4.1** Vyhledávání v Classic preset dropdown:
+  - `src/components/PresetCombobox.tsx` — nový reusable combobox (~150 řádků).
+    Text input + floating dropdown s filtrovaným seznamem matched presetů.
+  - **Filter logika:** case-insensitive word-match. Query se splitne na slova,
+    každé musí být substring v názvu presetu. Prázdný query = všechny presety.
+    Žádná externí knihovna (Fuse.js by byl overkill pro ~150 položek).
+  - **Klávesy:** šipky nahoru/dolů navigace, Enter vybere highlighted, Esc zavře
+    a vyčistí query. ArrowDown z prázdného stavu otevře dropdown.
+  - **A11y:** `role="combobox"` + `role="listbox"` + `role="option"`,
+    `aria-selected`, `aria-expanded`, `aria-autocomplete="list"`.
+  - **UX detail:** click mimo komponentu zavře dropdown. Při focusu se ukáže
+    celý seznam (query empty). Highlighted scrolluje do view (`scrollIntoView`).
+    Použit `onMouseDown` (ne click) na list item, aby selectování fired před
+    blur input. Selected preset má lehce fialový text, když není highlighted.
+  - `Visualizer.tsx` — `<select>` nahrazený `<PresetCombobox>`, interface
+    (`currentPreset` / `onPresetChange`) zůstává. App.tsx nemění.
+  - `npx tsc --noEmit` exit 0.
 
 - **Fáze 0.1** Ověřen aktuální stav klíčových knihoven (květen 2026):
   - `mp4-muxer` je deprecated → používáme **Mediabunny**.

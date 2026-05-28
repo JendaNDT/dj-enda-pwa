@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   exportVideo,
   exportVideoModern,
@@ -12,6 +12,7 @@ import {
   DEFAULT_EXPORT_QUALITY_ID,
   getExportQualityById,
   type ExportProgress,
+  type ExportRange,
 } from '../lib/export'
 
 export type ExportMode = 'classic' | 'modern' | 'ai'
@@ -29,6 +30,7 @@ interface ExportButtonProps {
 type Status = 'idle' | 'confirming' | 'exporting' | 'done' | 'error'
 
 const CONFIRM_THRESHOLD_SECONDS = 600 // 10 minut
+const MIN_TRIM_LENGTH_SECONDS = 1
 
 function describeStage(stage?: ExportProgress['stage']): string {
   switch (stage) {
@@ -55,10 +57,32 @@ export function ExportButton({
   const [qualityId, setQualityId] = useState<string>(
     DEFAULT_EXPORT_QUALITY_ID,
   )
+
+  // Trim state — start a end v sekundách. Default = celá skladba.
+  const fullDuration = audioBuffer.duration
+  const [trimStart, setTrimStart] = useState<number>(0)
+  const [trimEnd, setTrimEnd] = useState<number>(fullDuration)
+
   const abortRef = useRef<AbortController | null>(null)
 
-  const duration = audioBuffer.duration
-  const estimatedBytes = estimateOutputSize(duration, qualityId)
+  // Reset trim, když se změní audioBuffer (jiný soubor).
+  useEffect(() => {
+    setTrimStart(0)
+    setTrimEnd(audioBuffer.duration)
+  }, [audioBuffer])
+
+  // Effektivní rozsah exportu — vždy alespoň MIN_TRIM_LENGTH_SECONDS.
+  const safeEnd = Math.max(trimEnd, trimStart + MIN_TRIM_LENGTH_SECONDS)
+  const safeStart = Math.min(trimStart, safeEnd - MIN_TRIM_LENGTH_SECONDS)
+  const effectiveDuration = Math.max(MIN_TRIM_LENGTH_SECONDS, safeEnd - safeStart)
+  const isTrimmed =
+    safeStart > 0.01 || fullDuration - safeEnd > 0.01
+
+  const range: ExportRange | undefined = isTrimmed
+    ? { startSec: safeStart, endSec: safeEnd }
+    : undefined
+
+  const estimatedBytes = estimateOutputSize(effectiveDuration, qualityId)
   const filename = buildExportFilename(audioFilename)
   const modeLabel =
     mode === 'classic' ? 'Classic' : mode === 'modern' ? 'Modern' : 'AI Hybrid'
@@ -66,7 +90,7 @@ export function ExportButton({
 
   const handleExportClick = () => {
     setErrorMsg(null)
-    if (duration > CONFIRM_THRESHOLD_SECONDS) {
+    if (effectiveDuration > CONFIRM_THRESHOLD_SECONDS) {
       setStatus('confirming')
     } else {
       runExport()
@@ -86,6 +110,7 @@ export function ExportButton({
           audioBuffer,
           presetKey,
           qualityId,
+          range,
           signal: controller.signal,
           onProgress: setProgress,
         })
@@ -94,6 +119,7 @@ export function ExportButton({
           audioBuffer,
           presetId: presetKey,
           qualityId,
+          range,
           signal: controller.signal,
           onProgress: setProgress,
         })
@@ -105,6 +131,7 @@ export function ExportButton({
           audioBuffer,
           imageUrls: aiImageUrls,
           qualityId,
+          range,
           signal: controller.signal,
           onProgress: setProgress,
         })
@@ -130,20 +157,48 @@ export function ExportButton({
     setErrorMsg(null)
   }
 
+  const resetTrim = () => {
+    setTrimStart(0)
+    setTrimEnd(fullDuration)
+  }
+
+  /** Když uživatel zvedne start nad end - safeguard rozšíření. */
+  const handleStartChange = (v: number) => {
+    const next = Math.max(0, Math.min(v, fullDuration - MIN_TRIM_LENGTH_SECONDS))
+    setTrimStart(next)
+    if (trimEnd < next + MIN_TRIM_LENGTH_SECONDS) {
+      setTrimEnd(Math.min(fullDuration, next + MIN_TRIM_LENGTH_SECONDS))
+    }
+  }
+
+  const handleEndChange = (v: number) => {
+    const next = Math.max(MIN_TRIM_LENGTH_SECONDS, Math.min(v, fullDuration))
+    setTrimEnd(next)
+    if (trimStart > next - MIN_TRIM_LENGTH_SECONDS) {
+      setTrimStart(Math.max(0, next - MIN_TRIM_LENGTH_SECONDS))
+    }
+  }
+
   // === Render ===
 
   if (status === 'confirming') {
     const etaEstimateMin =
       mode === 'classic'
-        ? Math.ceil(duration / 60)
-        : Math.ceil(duration / 60 / 2.5) // Modern + AI jsou ~2.5× rychlejší
+        ? Math.ceil(effectiveDuration / 60)
+        : Math.ceil(effectiveDuration / 60 / 2.5) // Modern + AI jsou ~2.5× rychlejší
     return (
       <div className="px-6 py-5 rounded-2xl bg-amber-950/30 border border-amber-800/50">
         <div className="text-xs uppercase tracking-wider text-amber-400 mb-2">
           Potvrzení dlouhého exportu · {modeLabel} · {quality.name}
         </div>
         <p className="text-sm text-neutral-200">
-          Tvůj track má {formatEta(duration)}. Export bude trvat zhruba{' '}
+          Exportovaná část má {formatEta(effectiveDuration)}
+          {isTrimmed && (
+            <>
+              {' '}(oříznuto z {formatEta(fullDuration)})
+            </>
+          )}
+          . Export bude trvat zhruba{' '}
           <strong>{etaEstimateMin}+ minut</strong> a výsledný MP4 bude přibližně{' '}
           <strong>{formatBytes(estimatedBytes)}</strong>.
         </p>
@@ -270,6 +325,73 @@ export function ExportButton({
           {quality.width}×{quality.height} @ {quality.fps} FPS
         </div>
       </div>
+
+      {/* Trim sekce — start a end slidery v sekundách (krok 1s). */}
+      <div className="px-6 py-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+        <div className="flex items-center justify-between mb-3">
+          <label className="text-xs uppercase tracking-wider text-neutral-500">
+            Oříznutí audia
+          </label>
+          {isTrimmed && (
+            <button
+              type="button"
+              onClick={resetTrim}
+              className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              Reset (celá skladba)
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <div className="flex justify-between text-xs text-neutral-400 mb-1">
+              <span>Začátek</span>
+              <span className="font-mono">{formatEta(safeStart)}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={Math.floor(fullDuration)}
+              step={1}
+              value={Math.floor(safeStart)}
+              onChange={(e) => handleStartChange(parseInt(e.target.value, 10))}
+              className="w-full accent-purple-500"
+              aria-label="Začátek exportu"
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between text-xs text-neutral-400 mb-1">
+              <span>Konec</span>
+              <span className="font-mono">{formatEta(safeEnd)}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={Math.floor(fullDuration)}
+              step={1}
+              value={Math.ceil(safeEnd)}
+              onChange={(e) => handleEndChange(parseInt(e.target.value, 10))}
+              className="w-full accent-purple-500"
+              aria-label="Konec exportu"
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 text-xs text-neutral-500">
+          Exportovaná část:{' '}
+          <strong className="text-neutral-300">
+            {formatEta(effectiveDuration)}
+          </strong>
+          {isTrimmed && (
+            <span className="text-neutral-500">
+              {' '}z {formatEta(fullDuration)}
+            </span>
+          )}
+        </div>
+      </div>
+
       <button
         type="button"
         onClick={handleExportClick}

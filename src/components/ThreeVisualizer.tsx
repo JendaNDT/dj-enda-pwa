@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { extractFeatures, type AudioFeatures } from '../lib/audioFeatures'
@@ -10,6 +10,7 @@ import {
   type PresetInstance,
   type VisualizerUniforms,
 } from '../lib/modernPresets'
+import { useFavorites } from '../lib/favorites'
 
 interface ThreeVisualizerProps {
   audioBuffer: AudioBuffer
@@ -53,6 +54,20 @@ export function ThreeVisualizer({
   const uniformsRef = useRef<VisualizerUniforms | null>(null)
   const presetInstanceRef = useRef<PresetInstance | null>(null)
   const currentPresetIdRef = useRef<string>(currentPresetId)
+
+  // Oblíbené Modern presety — perzistované v localStorage.
+  const { favorites: favPresets, isFavorite, toggle: toggleFavoritePreset } = useFavorites('modern')
+
+  // Seřazené presety: oblíbené nahoře, zbytek dole.
+  const sortedPresets = useMemo(() => {
+    const favs: typeof MODERN_PRESETS = []
+    const rest: typeof MODERN_PRESETS = []
+    for (const p of MODERN_PRESETS) {
+      if (favPresets.has(p.id)) favs.push(p)
+      else rest.push(p)
+    }
+    return { favs, rest }
+  }, [favPresets])
 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<AudioBufferSourceNode | null>(null)
@@ -421,12 +436,56 @@ export function ThreeVisualizer({
             onChange={(e) => onPresetChange(e.target.value)}
             className="flex-1 min-w-0 h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
           >
-            {MODERN_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.name}
-              </option>
-            ))}
+            {sortedPresets.favs.length > 0 && (
+              <optgroup label="Oblíbené">
+                {sortedPresets.favs.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {sortedPresets.rest.length > 0 && (
+              <optgroup label={sortedPresets.favs.length > 0 ? 'Ostatní' : 'Presety'}>
+                {sortedPresets.rest.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
+
+          <button
+            type="button"
+            onClick={() => toggleFavoritePreset(currentPresetId)}
+            className={[
+              'h-10 w-10 flex items-center justify-center rounded-lg border transition-colors',
+              isFavorite(currentPresetId)
+                ? 'bg-yellow-500/10 border-yellow-500/40 text-yellow-400'
+                : 'bg-neutral-800 border-neutral-700 text-neutral-500 hover:text-neutral-300',
+            ].join(' ')}
+            aria-label={
+              isFavorite(currentPresetId) ? 'Odebrat z oblíbených' : 'Přidat do oblíbených'
+            }
+            title={
+              isFavorite(currentPresetId) ? 'Odebrat z oblíbených' : 'Přidat do oblíbených'
+            }
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="w-5 h-5"
+              fill={isFavorite(currentPresetId) ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"
+              />
+            </svg>
+          </button>
 
           <div className="flex items-center gap-2 min-w-[140px]">
             <svg

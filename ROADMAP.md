@@ -111,9 +111,9 @@ S = malá změna (~1 h), M = středně velká (~2–3 h), L = velká (~5+ h).
 
 | # | Bod | Velikost |
 |---|---|---|
-| 4.1 | Vyhledávání v Classic preset dropdown (filter podle názvu, fuzzy match) | S |
-| 4.2 | Oblíbené presety (Classic + Modern) — hvězdička ikonka, localStorage, sekce „Oblíbené" v dropdownu | S |
-| 4.3 | Audio trim/range pro export — dva slidery (start/end) v ExportButton confirm dialogu | M |
+| 4.1 | Vyhledávání v Classic preset dropdown (filter podle názvu, fuzzy match) ✅ done | S |
+| 4.2 | Oblíbené presety (Classic + Modern) — hvězdička ikonka, localStorage, sekce „Oblíbené" v dropdownu ✅ done | S |
+| 4.3 | Audio trim/range pro export — dva slidery (start/end) v ExportButton confirm dialogu ✅ done | M |
 
 ### Střední priorita
 
