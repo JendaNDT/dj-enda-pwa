@@ -4,13 +4,13 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 4 — Round 1 + Round 2 + Round 3 hotové
-**Aktuální bod:** 4.1 + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 hotové. Z 13 bodů
-Fáze 4 zbývá: 4.8 (post-export thumbnail), 4.9 (víc Modern presetů),
-4.10 (HF model dropdown), 4.11 (PWA install prompt), 4.12 (intro/outro
-credits), 4.13 (watermark).
-**Příští krok:** **Round 4 — Power features** (4.8 + 4.9 + 4.10). Před tím
-commit + push Round 3.
+**Aktuální fáze:** Fáze 4 — Round 1–4 hotové
+**Aktuální bod:** 4.1 + 4.2 + 4.3 + 4.4 + 4.5 + 4.6 + 4.7 + 4.8 + 4.9 + 4.10
+hotové. Modern má teď 6 presetů (3 původní + Wave Field / Plasma / Tunnel).
+Post-export thumbnail + share, HF model dropdown s Flux Dev defaultem.
+**Příští krok:** **Round 5 — Nice to have** (4.11 PWA install prompt,
+4.12 intro/outro credits, 4.13 watermark). Backlog: 4.14 Terrain Mesh,
+4.15 Fractal Noise. Před tím commit + push Round 4.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -21,6 +21,56 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 4.10** HF model dropdown:
+  - `src/lib/hfClient.ts` — nový `HF_MODELS` array s 3 modely:
+    * **Flux Dev** (default, nejvyšší kvalita, ~10 s)
+    * **Flux Schnell** (rychlý, ~5 s)
+    * **SDXL Turbo** (alternativa, ~3 s)
+  - `DEFAULT_HF_MODEL` ukazuje na první (Flux Dev). Existující
+    `generateImage(prompt, { modelId })` už modelId parametr měl, jen byl
+    fix na Schnell.
+  - **Sentinel `__custom__`** pro UI dropdown signalizuje, že uživatel chce
+    custom model ID. Když je vybraný, ukáže se text input pod selectem.
+  - **AiHybrid.tsx** — nová karta „AI model" nad styl kartou. `<select>`
+    s předdefinovanými modely + „Custom model ID…" volba.
+    `effectiveModelId` v `generateOne()` resolveuje sentinel na trim z
+    `customModelId` (fallback na DEFAULT pokud prázdné).
+
+- **Fáze 4.8** Post-export thumbnail + share:
+  - `src/lib/thumbnails.ts` — nový `extractThumbnails(blob, times, maxWidth)`.
+    Vytvoří `HTMLVideoElement`, seekne na požadované časy a přes canvas
+    drawImage vyrobí PNG blob URLs. Async, robust: pokud video metadata
+    selžou, throws. Cleanup videoUrl ve `finally`.
+  - **ExportButton.tsx** — po `downloadBlob()` extrahuje 3 thumbnaily
+    (0, duration/2, duration-0.5). Fail-safe try/catch — pokud extract
+    selže, ukáže done state bez thumbů místo crashe.
+  - **Done state UI** rozšířený o:
+    * **Grid 3× thumbnail** (aspect-video, object-cover).
+    * **„Otevřít video"** tlačítko — `window.open(blobUrl)` v nové záložce.
+    * **„Sdílet"** tlačítko — Web Share API přes `navigator.share({ files: [file] })`.
+      **Feature-detect** přes `navigator.share && navigator.canShare` — tlačítko
+      se neukáže na Chrome desktop, ukáže se na Mac Safari + mobilu kde
+      Web Share s files funguje.
+  - **Cleanup**: `resetToIdle` revokuje thumbnail URLs i resultUrl;
+    useEffect cleanup při unmountu komponenty.
+
+- **Fáze 4.9** Tři nové Modern presety (Wave Field / Plasma / Tunnel):
+  - **`src/lib/modernPresets.ts`** rozšířen o 3 plane-based fragment shadery
+    (stejný pattern jako existující Kaleidoscope). Modern má teď celkem 6 presetů.
+  - **Wave Field** — interferující sinusoidní vlny v X, Y a diagonálním směru.
+    `high` band řídí frekvenci (víc vln při hi-hat), `low` amplitudu,
+    `centroid` color shift cold→warm, beat magenta accent pulse.
+  - **Plasma** — klasický plasma efekt: suma 4 sinusoid (X, Y, diagonal, radial).
+    `mid` band moduluje rychlost color cyclingu, `low` baseline brightness,
+    `high` pow(1.5) sparkle curve. RGB se cycluje přes 3 sin posuny po 120°.
+  - **Tunnel** — radial UV transformace (1/r) vyrobí iluzi letu skrz tunel.
+    `low` band řídí rychlost vrtání, prstence (sin(depth)) + spirálovité žebra
+    (sin(angle + depth)) mixované 55:45. Color cool→warm podle `mid`, beat
+    accent flash, `high` jiskry přes `fract(pattern × 23.7)` threshold.
+  - **Backlog**: Terrain Mesh a Fractal Noise přesunuty do nových bodů 4.14
+    a 4.15 v ROADMAPu — 3 dobré presety jsou víc než 5 průměrných.
+  - Imports rozšířeny o `cos`, `vec3`, `fract`, `pow` z `three/tsl`.
 
 - **Fáze 4.6** Keyboard shortcuts + help overlay:
   - `src/types/visualizerHandle.ts` — nový interface `VisualizerHandle`

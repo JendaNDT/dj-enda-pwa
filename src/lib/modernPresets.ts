@@ -11,9 +11,11 @@ import {
   normalLocal,
   mix,
   sin,
+  cos,
   color,
   screenUV,
   vec2,
+  vec3,
   length,
   atan,
   mod,
@@ -21,6 +23,8 @@ import {
   oneMinus,
   clamp,
   float,
+  fract,
+  pow,
   PI2,
 } from 'three/tsl'
 
@@ -357,12 +361,222 @@ export const kaleidoscope: ModernPreset = {
   },
 }
 
+// ─── Preset: Wave Field ──────────────────────────────────────────────────────
+
+/**
+ * 2D vlnové pole — interferující sinusoidní vlny v X a Y. Frekvence řízená
+ * `high` bandem (hi-hat / brightness), amplituda `low` (bass), barevný shift
+ * podle `centroid`, beat blesk.
+ */
+export const waveField: ModernPreset = {
+  id: 'wave-field',
+  name: 'Wave Field',
+  description: 'Interferující vlnové pole, high pásmo zvyšuje frekvenci',
+  setup(scene, uniforms) {
+    const geometry = new THREE.PlaneGeometry(20, 12)
+    const material = new MeshBasicNodeMaterial({
+      side: THREE.DoubleSide,
+      transparent: false,
+    })
+
+    material.colorNode = Fn(() => {
+      // Centered UV s aspect korekcí (16:9).
+      const u = screenUV.sub(vec2(0.5, 0.5)).mul(2.0)
+      const aspectU = vec2(u.x.mul(1.778), u.y)
+
+      const t = uniforms.audioTime
+      // Frekvence — base + high band; high tóny přidávají hustší vlny.
+      const freq = uniforms.high.mul(8.0).add(4.0)
+      // Amplituda v barvě podle low.
+      const amp = uniforms.low.mul(0.6).add(0.4)
+
+      // Dvě sinusoidy v X a Y + diagonální komponenta pro interference.
+      const waveX = sin(aspectU.x.mul(freq).add(t.mul(1.5)))
+      const waveY = sin(aspectU.y.mul(freq).add(t.mul(1.1)))
+      const waveD = sin(aspectU.x.add(aspectU.y).mul(freq).mul(0.7).sub(t.mul(0.9)))
+
+      // Pattern: kombinace 3 vln (interference). Normalizováno na 0..1.
+      const pattern = waveX.add(waveY).add(waveD).mul(0.166).add(0.5).mul(amp)
+
+      // Color: centroid posouvá hue od cold (modré) k warm (žluté).
+      const cold = color(0.1, 0.4, 1.0)
+      const warm = color(1.0, 0.85, 0.2)
+      const accent = color(1.0, 0.25, 0.6)
+      const baseMix = mix(cold, warm, uniforms.centroid)
+      // Beat přidává magenta pulse.
+      const withBeat = mix(baseMix, accent, uniforms.beat.mul(0.7))
+
+      // Brightness modulace: pattern × intenzita.
+      const brightness = pattern.mul(1.2).add(uniforms.beat.mul(0.4))
+      // Vignette pro filmový pocit.
+      const r = length(aspectU)
+      const vignette = oneMinus(clamp(r.mul(0.5), 0.0, 1.0))
+
+      return withBeat.mul(brightness).mul(vignette.add(0.3))
+    })()
+
+    const plane = new THREE.Mesh(geometry, material)
+    scene.add(plane)
+
+    return {
+      dispose: () => {
+        scene.remove(plane)
+        geometry.dispose()
+        material.dispose()
+      },
+    }
+  },
+}
+
+// ─── Preset: Plasma ──────────────────────────────────────────────────────────
+
+/**
+ * Klasický plasma efekt — suma několika sinusoid v různých směrech a fázích.
+ * Mid band moduluje rychlost color cycling, low band intenzitu, high jiskřivost.
+ */
+export const plasma: ModernPreset = {
+  id: 'plasma',
+  name: 'Plasma',
+  description: 'Klasický plasma efekt s audio-driven color cycling',
+  setup(scene, uniforms) {
+    const geometry = new THREE.PlaneGeometry(20, 12)
+    const material = new MeshBasicNodeMaterial({
+      side: THREE.DoubleSide,
+      transparent: false,
+    })
+
+    material.colorNode = Fn(() => {
+      // Plasma se počítá v "world-like" pixelové souřadnici (ne centered),
+      // aby vznikl charakteristický vlnový pattern přes celou plochu.
+      const u = screenUV.mul(8.0) // scale ~ 8 cycles přes obrazovku
+      const t = uniforms.audioTime
+
+      // Mid band moduluje rychlost color cycling (1..3).
+      const speed = uniforms.mid.mul(2.0).add(1.0)
+      const tt = t.mul(speed)
+
+      // Suma 4 sinusoid s různými frekvencemi a směry — tradiční plasma vzorec.
+      const v1 = sin(u.x.add(tt))
+      const v2 = sin(u.y.add(tt.mul(0.8)))
+      const v3 = sin(u.x.add(u.y).mul(0.5).add(tt.mul(0.6)))
+      const cx = u.x.mul(0.5).add(sin(tt.mul(0.3)).mul(2.0))
+      const cy = u.y.mul(0.5).add(cos(tt.mul(0.4)).mul(2.0))
+      const v4 = sin(length(vec2(cx, cy)).add(tt))
+
+      const plasma = v1.add(v2).add(v3).add(v4).mul(0.25)
+
+      // Mapování plasma → RGB přes sin posuny — vyrobí vibrant cycling.
+      const r = sin(plasma.mul(PI2)).mul(0.5).add(0.5)
+      const g = sin(plasma.mul(PI2).add(2.094)).mul(0.5).add(0.5) // +120°
+      const b = sin(plasma.mul(PI2).add(4.188)).mul(0.5).add(0.5) // +240°
+      const rgb = vec3(r, g, b)
+
+      // Low band zvedá baseline brightness (intenzita).
+      const brightness = uniforms.low.mul(0.4).add(uniforms.beat.mul(0.35)).add(0.7)
+      // High band přidává jiskřivost (pow curve)
+      const sparkle = pow(uniforms.high.add(0.5), float(1.5))
+
+      return rgb.mul(brightness).mul(sparkle)
+    })()
+
+    const plane = new THREE.Mesh(geometry, material)
+    scene.add(plane)
+
+    return {
+      dispose: () => {
+        scene.remove(plane)
+        geometry.dispose()
+        material.dispose()
+      },
+    }
+  },
+}
+
+// ─── Preset: Tunnel ──────────────────────────────────────────────────────────
+
+/**
+ * Tunnel efekt — radial UV transformace (1/r) vyrobí iluzi letu skrz nekonečný
+ * tunel. Low band moduluje rychlost vrtání (audioTime offset), beat brightness
+ * pulse, mid band tunelové stěny color shift, high jiskry.
+ */
+export const tunnel: ModernPreset = {
+  id: 'tunnel',
+  name: 'Tunnel',
+  description: 'Iluze letu skrz nekonečný tunel, low band řídí rychlost',
+  setup(scene, uniforms) {
+    const geometry = new THREE.PlaneGeometry(20, 12)
+    const material = new MeshBasicNodeMaterial({
+      side: THREE.DoubleSide,
+      transparent: false,
+    })
+
+    material.colorNode = Fn(() => {
+      // Centered UV s aspect korekcí.
+      const u = screenUV.sub(vec2(0.5, 0.5)).mul(2.0)
+      const aspectU = vec2(u.x.mul(1.778), u.y)
+
+      // Polární souřadnice.
+      const r = length(aspectU).add(0.001) // ochrana proti div by zero
+      const a = atan(aspectU.y, aspectU.x)
+
+      // Klasická tunnel transformace: nahradíme radius za 1/r → vzdálenost.
+      // depth = jak hluboko jsme v tunelu. Low band moduluje rychlost.
+      const speed = uniforms.low.mul(2.5).add(1.0)
+      const depth = float(1.0).div(r).add(uniforms.audioTime.mul(speed))
+
+      // Tunelové prstence: pattern v depth (sin → ring).
+      const rings = sin(depth.mul(6.0)).mul(0.5).add(0.5)
+      // Spirálovité žebra: kombinace angle + depth.
+      const ribs = sin(a.mul(8.0).add(depth.mul(0.5))).mul(0.5).add(0.5)
+      // Pattern = mix ringů a žeber.
+      const pattern = mix(rings, ribs, float(0.45))
+
+      // Color: tunelové stěny mid band moduluje hue.
+      const cool = color(0.1, 0.7, 1.0)
+      const warm = color(1.0, 0.35, 0.05)
+      const accent = color(1.0, 0.95, 0.4)
+      const baseMix = mix(cool, warm, uniforms.mid)
+      const withBeat = mix(baseMix, accent, uniforms.beat.mul(0.6))
+
+      // Brightness: pattern × beat pulse × radius-based fade (střed je tmavší).
+      const centerFade = clamp(r.mul(0.5), 0.0, 1.0)
+      const beatBoost = uniforms.beat.mul(0.5).add(1.0)
+      // High band přidává jiskry — fract(pattern × 23.7) > 0.97.
+      const sparkle = clamp(
+        fract(pattern.mul(23.7).add(uniforms.audioTime.mul(2.0))).sub(0.97).mul(33.0),
+        0.0,
+        1.0,
+      ).mul(uniforms.high)
+
+      const litColor = withBeat
+        .mul(pattern.mul(0.9).add(0.2))
+        .mul(beatBoost)
+        .mul(centerFade)
+      return litColor.add(vec3(sparkle, sparkle, sparkle))
+    })()
+
+    const plane = new THREE.Mesh(geometry, material)
+    scene.add(plane)
+
+    return {
+      dispose: () => {
+        scene.remove(plane)
+        geometry.dispose()
+        material.dispose()
+      },
+    }
+  },
+}
+
 // ─── Registry všech presetů ──────────────────────────────────────────────────
 
 export const MODERN_PRESETS: ModernPreset[] = [
   sphereDistortion,
   particleFlow,
   kaleidoscope,
+  waveField,
+  plasma,
+  tunnel,
 ]
 
 export function getPresetById(id: string): ModernPreset | undefined {

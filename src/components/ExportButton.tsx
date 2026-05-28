@@ -14,6 +14,7 @@ import {
   type ExportProgress,
   type ExportRange,
 } from '../lib/export'
+import { extractThumbnails } from '../lib/thumbnails'
 
 export type ExportMode = 'classic' | 'modern' | 'ai'
 
@@ -57,6 +58,18 @@ export function ExportButton({
   const [qualityId, setQualityId] = useState<string>(
     DEFAULT_EXPORT_QUALITY_ID,
   )
+  /** Thumbnail URLs po dokončeném exportu (3 obrázky: start/middle/end). */
+  const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([])
+  /** Blob URL na výsledné MP4 pro „Otevřít v novém tabu" a Web Share API. */
+  const [resultUrl, setResultUrl] = useState<string | null>(null)
+  /** Hotový MP4 blob, pamatovaný pro Web Share API (potřebuje File objekt). */
+  const resultBlobRef = useRef<Blob | null>(null)
+
+  // Feature-detect Web Share API s File support.
+  const canShare =
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function'
 
   // Trim state — start a end v sekundách. Default = celá skladba.
   const fullDuration = audioBuffer.duration
@@ -70,6 +83,15 @@ export function ExportButton({
     setTrimStart(0)
     setTrimEnd(audioBuffer.duration)
   }, [audioBuffer])
+
+  // Cleanup thumbnail / result URL při unmountu.
+  useEffect(() => {
+    return () => {
+      thumbnailUrls.forEach((u) => URL.revokeObjectURL(u))
+      if (resultUrl) URL.revokeObjectURL(resultUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Effektivní rozsah exportu — vždy alespoň MIN_TRIM_LENGTH_SECONDS.
   const safeEnd = Math.max(trimEnd, trimStart + MIN_TRIM_LENGTH_SECONDS)
@@ -137,6 +159,25 @@ export function ExportButton({
         })
       }
       downloadBlob(blob, filename)
+
+      // Pamatovat blob pro Web Share + vyrobit URL pro „Otevřít v novém tabu".
+      resultBlobRef.current = blob
+      const url = URL.createObjectURL(blob)
+      setResultUrl(url)
+
+      // Extract 3 thumbnaily (start, middle, end). Fail-safe: pokud se nepodaří,
+      // ukážeme jen prázdný done state — nezdržujeme uživatele chybou.
+      try {
+        const thumbs = await extractThumbnails(blob, [
+          0,
+          effectiveDuration / 2,
+          Math.max(0, effectiveDuration - 0.5),
+        ])
+        setThumbnailUrls(thumbs)
+      } catch {
+        setThumbnailUrls([])
+      }
+
       setStatus('done')
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Neznámá chyba'
@@ -155,6 +196,33 @@ export function ExportButton({
     setStatus('idle')
     setProgress(null)
     setErrorMsg(null)
+    // Cleanup thumbnail URLs a result URL.
+    thumbnailUrls.forEach((u) => URL.revokeObjectURL(u))
+    setThumbnailUrls([])
+    if (resultUrl) URL.revokeObjectURL(resultUrl)
+    setResultUrl(null)
+    resultBlobRef.current = null
+  }
+
+  const openResultInNewTab = () => {
+    if (resultUrl) window.open(resultUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  const shareResult = async () => {
+    const blob = resultBlobRef.current
+    if (!blob || !canShare) return
+    const file = new File([blob], filename, { type: 'video/mp4' })
+    const shareData: ShareData = {
+      files: [file],
+      title: filename,
+      text: `${modeLabel} videoklip · ${formatEta(effectiveDuration)}`,
+    }
+    if (!navigator.canShare(shareData)) return
+    try {
+      await navigator.share(shareData)
+    } catch {
+      // Uživatel zrušil sdílení nebo browser odmítl — ignorujeme.
+    }
   }
 
   const resetTrim = () => {
@@ -270,8 +338,61 @@ export function ExportButton({
           Hotovo · {modeLabel}
         </div>
         <p className="text-sm text-neutral-200">
-          Video <strong>{filename}</strong> bylo staženo do tvé složky Stažené.
+          Video <strong className="break-all">{filename}</strong> bylo staženo
+          do tvé složky Stažené.
         </p>
+
+        {/* Thumbnail preview — 3 snímky (start / middle / end). */}
+        {thumbnailUrls.length > 0 && (
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {thumbnailUrls.map((url, i) => (
+              <div
+                key={i}
+                className="aspect-video rounded-lg bg-neutral-950 border border-neutral-800 overflow-hidden"
+              >
+                <img
+                  src={url}
+                  alt={`Náhled ${i + 1} ze 3`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {resultUrl && (
+            <button
+              type="button"
+              onClick={openResultInNewTab}
+              className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-100 text-sm transition-colors flex items-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              Otevřít video
+            </button>
+          )}
+          {canShare && (
+            <button
+              type="button"
+              onClick={shareResult}
+              className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-100 text-sm transition-colors flex items-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+              Sdílet
+            </button>
+          )}
+        </div>
+
         <button
           type="button"
           onClick={resetToIdle}

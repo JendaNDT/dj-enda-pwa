@@ -128,9 +128,9 @@ S = malá změna (~1 h), M = středně velká (~2–3 h), L = velká (~5+ h).
 
 | # | Bod | Velikost |
 |---|---|---|
-| 4.8 | Preview thumbnail po exportu — první/middle/last snímek inline + tlačítka „Otevřít" / „Sdílet" | M |
-| 4.9 | Více Modern presetů (4–6 nových): wave field, plasma, tunnel, terrain mesh, fractal noise | L |
-| 4.10 | HF model dropdown — Flux Schnell / Flux Dev / SDXL Turbo / Custom model ID input | S |
+| 4.8 | Preview thumbnail po exportu — první/middle/last snímek inline + tlačítka „Otevřít" / „Sdílet" ✅ done | M |
+| 4.9 | Více Modern presetů — wave field, plasma, tunnel ✅ done (terrain mesh + fractal noise → backlog) | L |
+| 4.10 | HF model dropdown — Flux Dev (default) / Flux Schnell / SDXL Turbo / Custom model ID input ✅ done | S |
 
 ### Nice to have (low priority)
 
@@ -139,6 +139,8 @@ S = malá změna (~1 h), M = středně velká (~2–3 h), L = velká (~5+ h).
 | 4.11 | PWA install prompt UI — vlastní tlačítko „Nainstaluj na plochu" místo browser default | S |
 | 4.12 | Titulek/credits screen volitelně — 3 s intro „Track: X by Y" + outro „Made with DJ Enda" před exportem | M |
 | 4.13 | Watermark volitelný — polopropustné logo v rohu pro brandování | S |
+| 4.14 | Modern preset Terrain Mesh (vertex displacement na ploché ploše, audio-driven height map) | M |
+| 4.15 | Modern preset Fractal Noise (mandelbrot/julia-like iterace, beat zoom) | M |
 
 ### Doporučené pořadí implementace
 

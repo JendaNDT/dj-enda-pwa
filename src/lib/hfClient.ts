@@ -71,7 +71,44 @@ export function maskToken(token: string): string {
 
 // ─── Image generation ──────────────────────────────────────────────────────
 
-export const DEFAULT_HF_MODEL = 'black-forest-labs/FLUX.1-schnell'
+/**
+ * Předdefinovaná nabídka HF modelů pro UI dropdown (Fáze 4.10).
+ *
+ * Default je **FLUX.1-dev** — vyšší kvalita než Schnell, pomalejší, ale pro
+ * statické keyframes (8× per video) je rozdíl ~5 s vs ~10 s nehraje roli
+ * a finální vizuál je film-quality.
+ *
+ * Custom volba umožňuje vložit jakékoliv HF model ID
+ * (např. `stabilityai/stable-diffusion-xl-base-1.0`) — pro power users.
+ */
+export interface HfModelOption {
+  id: string
+  name: string
+  description: string
+}
+
+export const HF_MODELS: HfModelOption[] = [
+  {
+    id: 'black-forest-labs/FLUX.1-dev',
+    name: 'Flux Dev (default)',
+    description: 'Nejvyšší kvalita FLUX, ~10 s / obraz',
+  },
+  {
+    id: 'black-forest-labs/FLUX.1-schnell',
+    name: 'Flux Schnell',
+    description: 'Rychlý FLUX, ~5 s / obraz',
+  },
+  {
+    id: 'stabilityai/sdxl-turbo',
+    name: 'SDXL Turbo',
+    description: 'Alternativa od Stability, ~3 s / obraz',
+  },
+]
+
+export const DEFAULT_HF_MODEL = HF_MODELS[0].id
+
+/** Sentinel value pro UI signalizující, že uživatel zvolil custom model. */
+export const CUSTOM_HF_MODEL_SENTINEL = '__custom__'
 
 export interface GenerateImageOptions {
   /** HF model id, default `black-forest-labs/FLUX.1-schnell`. */

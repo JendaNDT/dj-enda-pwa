@@ -6,6 +6,9 @@ import {
   describeRateLimit,
   maskToken,
   generateImage,
+  HF_MODELS,
+  DEFAULT_HF_MODEL,
+  CUSTOM_HF_MODEL_SENTINEL,
 } from '../lib/hfClient'
 import {
   hashAudioBuffer,
@@ -103,6 +106,10 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
   const [tokenInput, setTokenInput] = useState('')
   const [storedToken, setStoredToken] = useState<string | null>(null)
   const [styleId, setStyleId] = useState<string>(STYLE_OPTIONS[0].id)
+  /** Aktuální HF model — buď ID z `HF_MODELS` array, nebo sentinel `__custom__`. */
+  const [modelSelection, setModelSelection] = useState<string>(DEFAULT_HF_MODEL)
+  /** Custom model ID když uživatel zvolil sentinel. */
+  const [customModelId, setCustomModelId] = useState<string>('')
   const [keyframes, setKeyframes] = useState<Keyframe[]>(() =>
     buildInitialKeyframes(audioBuffer.duration, STYLE_OPTIONS[0]),
   )
@@ -279,7 +286,13 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
     try {
       // Custom prompt má přednost před defaultním ze style + section.
       const effectivePrompt = kf.customPrompt?.trim() || kf.prompt
+      // Resolved model: custom přes textinput, jinak vybraný z array.
+      const effectiveModelId =
+        modelSelection === CUSTOM_HF_MODEL_SENTINEL
+          ? customModelId.trim() || DEFAULT_HF_MODEL
+          : modelSelection
       const blob = await generateImage(effectivePrompt, {
+        modelId: effectiveModelId,
         token: storedToken,
         signal: abortRef.current?.signal,
       })
@@ -430,6 +443,42 @@ export function AiHybrid({ audioBuffer, audioFilename }: AiHybridProps) {
             </p>
           </div>
         )}
+      </div>
+
+      {/* HF model karta — výběr modelu (Fáze 4.10). */}
+      <div className="px-6 py-5 rounded-2xl bg-neutral-900 border border-neutral-800 transition-colors hover:border-neutral-700">
+        <div className="text-xs uppercase tracking-wider text-neutral-500 mb-2">
+          AI model
+        </div>
+        <select
+          value={modelSelection}
+          onChange={(e) => setModelSelection(e.target.value)}
+          disabled={isGenerating}
+          className="w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500 disabled:opacity-50"
+        >
+          {HF_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name} — {m.description}
+            </option>
+          ))}
+          <option value={CUSTOM_HF_MODEL_SENTINEL}>
+            Custom model ID…
+          </option>
+        </select>
+        {modelSelection === CUSTOM_HF_MODEL_SENTINEL && (
+          <input
+            type="text"
+            value={customModelId}
+            onChange={(e) => setCustomModelId(e.target.value)}
+            disabled={isGenerating}
+            placeholder="např. stabilityai/stable-diffusion-xl-base-1.0"
+            className="mt-2 w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 font-mono focus:outline-none focus:border-purple-500 disabled:opacity-50"
+          />
+        )}
+        <p className="mt-2 text-xs text-neutral-500">
+          Pomalejší modely (Flux Dev) dají vyšší kvalitu obrazu. Generování
+          8 keyframes proběhne jednou, pak je vše cached.
+        </p>
       </div>
 
       {/* Styl karta */}
