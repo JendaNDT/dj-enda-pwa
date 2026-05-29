@@ -440,10 +440,14 @@ export const ThreeVisualizer = forwardRef<VisualizerHandle, ThreeVisualizerProps
         )}
 
         {(status === 'idle' || status === 'ended') && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-neutral-950 via-purple-950/30 to-neutral-950">
+          // Live preview overlay (Fáze 5.11) — vizualizér běží v decay módu pod
+          // overlay, takže uživatel vidí, jak preset vypadá ještě před spuštěním.
+          // Tmavý gradient se subtle alpha aby vizuál mírně prosvítal, logo + button
+          // mají vlastní backdrop blur pro čitelnost.
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-neutral-950/70 via-purple-950/40 to-neutral-950/70 backdrop-blur-[2px]">
             <svg
               viewBox="0 0 48 48"
-              className="h-16 w-16 mb-4 opacity-70 animate-pulse"
+              className="h-16 w-16 mb-4 opacity-70 animate-pulse drop-shadow-[0_0_12px_rgba(147,51,234,0.6)]"
               aria-hidden="true"
             >
               <rect

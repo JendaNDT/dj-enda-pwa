@@ -57,6 +57,13 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
   const visualizerRef = useRef<ButterchurnVisualizer | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   const comboboxRef = useRef<PresetComboboxHandle | null>(null)
+  /** Silent oscillator + analyser pro idle preview (Fáze 5.11) — Butterchurn
+   *  potřebuje nějakou audio node v `connectAudio`, jinak vidí undefined.
+   *  V idle režimu krmíme analyser tichem, Butterchurn render preset s vlastní
+   *  time-based logikou (pomalý drift bez audio reactivity). Při klik "Spustit"
+   *  swapneme za reálný AudioBufferSourceNode. */
+  const idleOscillatorRef = useRef<OscillatorNode | null>(null)
+  const idleGainRef = useRef<GainNode | null>(null)
 
   const [status, setStatus] = useState<PlaybackStatus>('idle')
   const [volume, setVolume] = useState(0.8)
@@ -72,6 +79,91 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
   useEffect(() => {
     return () => {
       stopAndCleanup()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioBuffer])
+
+  // ─── Idle preview setup po mountu (Fáze 5.11) ────────────────────────────
+  // Vytvoří Butterchurn vizualizér s silent oscillatorem napojeným přes analyser.
+  // Preset se hýbe vlastním time-driven patternem (bez audio reactivity).
+  // Při klik „Spustit náhled" se v start() oscilátor odpojí a připojí audio source.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    let mounted = true
+    let pendingResume: (() => void) | null = null
+
+    const setupIdlePreview = async () => {
+      try {
+        const audioCtx = new AudioContext()
+        if (!mounted) {
+          await audioCtx.close()
+          return
+        }
+        audioCtxRef.current = audioCtx
+
+        // Silent oscillator → gain (0) → destination. Frekvence libovolná,
+        // ale gain 0 zajistí ticho. Oscillator musí běžet, aby AnalyserNode
+        // (přes connectAudio do Butterchurn) měl data k samplingu.
+        const osc = audioCtx.createOscillator()
+        osc.frequency.value = 110
+        const idleGain = audioCtx.createGain()
+        idleGain.gain.value = 0
+        osc.connect(idleGain)
+        idleGain.connect(audioCtx.destination)
+        idleOscillatorRef.current = osc
+        idleGainRef.current = idleGain
+
+        // Butterchurn vizualizér.
+        const visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
+          pixelRatio: window.devicePixelRatio || 1,
+        })
+        visualizerRef.current = visualizer
+        visualizer.connectAudio(osc)
+        visualizer.loadPreset(ALL_PRESETS[currentPreset], 0)
+
+        // Spustit oscillator. Pokud je context suspended (Chrome autoplay policy
+        // před user gesture), pokus o start může selhat — pak resume při prvním
+        // user gesture (klik kdekoliv).
+        try {
+          osc.start(0)
+        } catch {
+          // už spuštěný — ignorujeme
+        }
+
+        if (audioCtx.state === 'suspended') {
+          // Naplánujeme resume při prvním user gesture na dokumentu.
+          pendingResume = () => {
+            audioCtx.resume().catch(() => {})
+            document.removeEventListener('pointerdown', pendingResume!)
+          }
+          document.addEventListener('pointerdown', pendingResume)
+        }
+
+        // Render loop — i v suspended stavu Butterchurn renderuje preset
+        // s time-driven motion (presety mají vlastní `time` uniforms).
+        const renderFrame = () => {
+          visualizer.render()
+          animationFrameRef.current = requestAnimationFrame(renderFrame)
+        }
+        animationFrameRef.current = requestAnimationFrame(renderFrame)
+      } catch (e: unknown) {
+        // Idle preview failure není fatal — uživatel může kliknout Spustit
+        // a normální pipeline se rozjede. Logujeme, ale nezobrazujeme error.
+        console.warn('Idle preview setup failed:', e)
+      }
+    }
+
+    void setupIdlePreview()
+
+    return () => {
+      mounted = false
+      if (pendingResume) {
+        document.removeEventListener('pointerdown', pendingResume)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioBuffer])
@@ -94,6 +186,19 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
       gainRef.current.disconnect()
       gainRef.current = null
     }
+    if (idleOscillatorRef.current) {
+      try {
+        idleOscillatorRef.current.stop()
+      } catch {
+        // už zastavený
+      }
+      idleOscillatorRef.current.disconnect()
+      idleOscillatorRef.current = null
+    }
+    if (idleGainRef.current) {
+      idleGainRef.current.disconnect()
+      idleGainRef.current = null
+    }
     visualizerRef.current = null
     if (audioCtxRef.current) {
       audioCtxRef.current.close().catch(() => {})
@@ -105,20 +210,52 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
     const canvas = canvasRef.current
     if (!canvas) return
 
-    // Pokud běží z předchozího spuštění (např. restart po 'ended'), nejdřív uklidíme.
-    stopAndCleanup()
-
     try {
-      // 1. AudioContext (uvnitř user gesture handleru kvůli autoplay policy).
-      const audioCtx = new AudioContext()
-      audioCtxRef.current = audioCtx
+      // Reuse existing idle preview AudioContext + Butterchurn vizualizér.
+      // Pokud z nějakého důvodu chybí (idle preview selhal), fallback na fresh setup.
+      let audioCtx = audioCtxRef.current
+      let visualizer = visualizerRef.current
 
-      // 2. Source node z dekódovaného AudioBufferu.
+      if (!audioCtx || !visualizer) {
+        // Fallback path — vytvoříme čerstvé, jako před 5.11.
+        stopAndCleanup()
+        audioCtx = new AudioContext()
+        audioCtxRef.current = audioCtx
+        visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
+          pixelRatio: window.devicePixelRatio || 1,
+        })
+        visualizerRef.current = visualizer
+        visualizer.loadPreset(ALL_PRESETS[currentPreset], 0)
+      }
+
+      // Resume context (Chrome autoplay policy uvolní gesture).
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume()
+      }
+
+      // Odpojit a zastavit silent oscillator z idle preview.
+      if (idleOscillatorRef.current) {
+        try {
+          idleOscillatorRef.current.stop()
+        } catch {
+          // už zastavený
+        }
+        idleOscillatorRef.current.disconnect()
+        idleOscillatorRef.current = null
+      }
+      if (idleGainRef.current) {
+        idleGainRef.current.disconnect()
+        idleGainRef.current = null
+      }
+
+      // Vytvořit reálný audio source z bufferu.
       const source = audioCtx.createBufferSource()
       source.buffer = audioBuffer
       sourceRef.current = source
 
-      // 3. GainNode pro hlasitost — vložen mezi source a destination.
+      // GainNode pro hlasitost.
       const gain = audioCtx.createGain()
       gain.gain.value = volume
       gainRef.current = gain
@@ -126,31 +263,24 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
       source.connect(gain)
       gain.connect(audioCtx.destination)
 
-      // 4. Butterchurn vizualizér s aktuálním canvasem.
-      const visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
-        pixelRatio: window.devicePixelRatio || 1,
-      })
-      visualizerRef.current = visualizer
-
-      // 5. Paralelně připojit source do vizualizéru (fan-out na source).
-      //    Vizualizér tak vidí plné spektrum nezávisle na nastavení hlasitosti.
+      // Přesměrovat Butterchurn na real source.
       visualizer.connectAudio(source)
 
-      // 6. Načíst aktuálně vybraný preset.
-      visualizer.loadPreset(ALL_PRESETS[currentPreset], 0)
-
-      // 7. Spustit přehrávání a render loop.
+      // Spustit přehrávání.
       source.start(0)
       setStatus('playing')
       setError(null)
 
-      const renderFrame = () => {
-        visualizer.render()
+      // Render loop už běží z idle preview useEffectu — pokud z nějakého důvodu
+      // neběží (fallback path), spustíme ho teď.
+      if (animationFrameRef.current === null) {
+        const vis = visualizer
+        const renderFrame = () => {
+          vis.render()
+          animationFrameRef.current = requestAnimationFrame(renderFrame)
+        }
         animationFrameRef.current = requestAnimationFrame(renderFrame)
       }
-      animationFrameRef.current = requestAnimationFrame(renderFrame)
 
       source.onended = () => {
         if (animationFrameRef.current !== null) {
@@ -251,13 +381,14 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
           className="w-full h-full"
         />
 
-        {/* Overlay pro idle a ended stavy — ambient gradient + pulsující DJE
-            logo (Fáze 5.6). Lepší než čistě černý canvas. */}
+        {/* Overlay pro idle a ended stavy — semi-transparent aby vizualizér
+            byl vidět pod overlay (Fáze 5.6 + 5.11). Live preview běží z idle
+            useEffectu, uživatel hned vidí, jak preset vypadá. */}
         {(status === 'idle' || status === 'ended') && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-neutral-950 via-purple-950/30 to-neutral-950">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-neutral-950/70 via-purple-950/40 to-neutral-950/70 backdrop-blur-[2px]">
             <svg
               viewBox="0 0 48 48"
-              className="h-16 w-16 mb-4 opacity-70 animate-pulse"
+              className="h-16 w-16 mb-4 opacity-70 animate-pulse drop-shadow-[0_0_12px_rgba(147,51,234,0.6)]"
               aria-hidden="true"
             >
               <rect

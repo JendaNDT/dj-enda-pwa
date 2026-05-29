@@ -5,6 +5,7 @@ import { ThreeVisualizer } from './components/ThreeVisualizer'
 import { AiHybrid } from './components/AiHybrid'
 import { ExportButton } from './components/ExportButton'
 import { ToastContainer } from './components/ToastContainer'
+import { Hero } from './components/Hero'
 import {
   useAudioDecoder,
   formatDuration,
@@ -332,9 +333,12 @@ function App() {
       <main className="flex-1 w-full px-4 md:px-8 lg:px-12 py-8">
         <div className="mx-auto max-w-[1600px]">
           {!audioFile ? (
-            // Bez audio: centrovaný upload zóna, plně na střed.
-            <div className="flex items-center justify-center min-h-[60vh]">
-              <AudioUpload onFileSelected={setAudioFile} />
+            // Bez audio: Hero showcase + upload zóna.
+            <div className="space-y-2">
+              <Hero />
+              <div className="flex justify-center">
+                <AudioUpload onFileSelected={setAudioFile} />
+              </div>
             </div>
           ) : (
             // S audio: grid (md+) / stack (< md). Breakpoint snížen na md

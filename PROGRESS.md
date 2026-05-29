@@ -4,14 +4,14 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 5 — UX polish, Round 1 + Round 2 hotové
-**Aktuální bod:** 5.1 + 5.2 + 5.3 + 5.4 + 5.5 + 5.6 + 5.7 + 5.8 + 5.9 hotové.
-Defaults & onboarding: export Pokročilé nastavení collapsable s badge,
-toast systém + použití (favorites/cache/token/prompt), onboarding bubble
-u help tlačítka. `tsc -b` exit 0.
-**Příští krok:** **Round 3 — Hero & live preview** (5.10 pre-upload showcase
-videí, 5.11 live preview hned po uploadu). 5.10 vyžaduje manuálně vytvořit
-3 ukázková MP4 do public/showcase/. Před tím commit + push Round 2.
+**Aktuální fáze:** Fáze 5 — Round 1–3 hotové
+**Aktuální bod:** 5.1–5.11 hotové. Hero showcase s 3 kartami (placeholder
+nebo `/showcase/{kind}.mp4` když existuje), live preview po uploadu pro
+Classic + Modern (decay uniforms / silent oscillator). `tsc -b` exit 0.
+**Příští krok:** **Round 4 — ambiciózní features** (5.12 Comparison mode,
+5.13 preset thumbnails). Každý samostatná session. Plus **nahrát 3 showcase
+MP4** do `public/showcase/{classic,modern,ai}.mp4` (volitelné, fallback
+placeholder funguje hned). Před tím commit + push Round 3.
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -22,6 +22,39 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 5 Round 3** — Hero & live preview:
+  - **5.11 Live preview hned po uploadu:**
+    * **Modern (`ThreeVisualizer.tsx`)** — render loop už běžel z setup
+      useEffectu, jen jsem zprůhlednil overlay (`bg-gradient` s `/70`
+      alpha + `backdrop-blur-[2px]`) aby vizualizér byl vidět pod ním.
+      Decay uniforms v existujícím render loopu zajistí, že preset se
+      hýbe i bez audio — RMS/beat decay × 0.92/0.85, audioTime tikoval
+      wall-clock tempem.
+    * **Classic (`Visualizer.tsx`)** — větší refactor: nový useEffect
+      `setupIdlePreview` po mountu vytvoří **AudioContext + silent
+      oscillator (gain 0 → destination)** + Butterchurn vizualizér napojený
+      na oscillator. Pokud Chrome autoplay policy blokuje resume, čekáme
+      na první `pointerdown` event a context resume.
+    * `start()` v Classic refactored: **reused existing AudioContext + Butterchurn
+      visualizér** z idle preview (žádný teardown), zastavíme oscillator,
+      vytvoříme `AudioBufferSourceNode` → connectAudio na nový source.
+      Fallback path pokud idle preview selhal — fresh setup jako dřív.
+    * Cleanup rozšířen o `idleOscillatorRef` + `idleGainRef` disconnect.
+  - **5.10 Hero showcase pre-upload:**
+    * Nová `src/components/Hero.tsx` — slogan + 3 showcase karty Classic /
+      Modern / AI v gridu `sm:grid-cols-3`.
+    * **Smart video/placeholder fallback:** každá karta zkusí načíst
+      `/showcase/{kind}.mp4`. Při `onerror` (404, decode fail) `setVideoFailed`
+      → ukáže gradient placeholder s decentním ikonem (◉ / ◈ / ✦) a pulse
+      animací.
+    * **Adresář `public/showcase/`** vytvořen s `.gitkeep`. Jenda může
+      kdykoliv hodit reálná MP4 (`classic.mp4`, `modern.mp4`, `ai.mp4`)
+      a Hero je automaticky použije bez code změn.
+    * **Label overlay** — gradient bottom-to-top s názvem režimu + popisem
+      pod ním. Vždy viditelný, na hover karta zezelená border.
+    * Mount v `App.tsx` pre-upload větvi nad AudioUpload zónou.
+  - `npx tsc -b` exit 0.
 
 - **Fáze 5 Round 2** — Defaults & onboarding:
   - **5.8 Toast systém** — nový `src/lib/toast.ts` se subscribe pattern
