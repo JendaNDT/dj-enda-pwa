@@ -2,6 +2,7 @@ import {
   Output,
   Mp4OutputFormat,
   BufferTarget,
+  StreamTarget,
   CanvasSource,
   AudioBufferSource,
 } from 'mediabunny'
@@ -155,6 +156,8 @@ export interface ExportOptions {
   audioBuffer: AudioBuffer
   presetKey: string
   qualityId?: string
+  /** Cíl exportu — stream na disk (dlouhé / 4K) nebo in-memory buffer. */
+  destination?: ExportDestination
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
   range?: ExportRange
   /** Polopropustný DJE watermark v pravém dolním rohu hlavního obsahu (4.13). */
@@ -170,6 +173,8 @@ export interface ExportModernOptions {
   /** ID Modern presetu (z `MODERN_PRESETS`). */
   presetId: string
   qualityId?: string
+  /** Cíl exportu — stream na disk (dlouhé / 4K) nebo in-memory buffer. */
+  destination?: ExportDestination
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
   range?: ExportRange
   watermark?: boolean
@@ -183,12 +188,71 @@ export interface ExportAiOptions {
   /** URL všech 8 AI keyframes (musí být ready). */
   imageUrls: ReadonlyArray<string>
   qualityId?: string
+  /** Cíl exportu — stream na disk (dlouhé / 4K) nebo in-memory buffer. */
+  destination?: ExportDestination
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
   range?: ExportRange
   watermark?: boolean
   credits?: ExportCredits
   onProgress: (progress: ExportProgress) => void
   signal?: AbortSignal
+}
+
+/**
+ * Cíl exportu.
+ * - `buffer` (default): MP4 se složí do paměti a vrátí se jako Blob. Maximální
+ *   kompatibilita + fallback pro prohlížeče bez File System Access API.
+ * - `stream`: data se píšou rovnou do souboru na disku přes `StreamTarget`
+ *   (`fastStart: false` → metadata na konci, append-only, nejnižší paměť).
+ *   Drží paměť plochou i u dlouhých / 4K stop. Export funkce vrací `null`
+ *   (soubor je už na disku — Mediabunny `finalize()` writable zavře sám).
+ */
+export type ExportDestination =
+  | { kind: 'buffer' }
+  | { kind: 'stream'; writable: FileSystemWritableFileStream }
+
+/** Postaví Mediabunny Output podle zvoleného cíle exportu. */
+function createMp4Output(destination?: ExportDestination): {
+  output: Output
+  bufferTarget: BufferTarget | null
+} {
+  if (destination?.kind === 'stream') {
+    return {
+      output: new Output({
+        format: new Mp4OutputFormat({ fastStart: false }),
+        target: new StreamTarget(
+          // FileSystemWritableFileStream je kompatibilní (chunk {type,data,position}).
+          destination.writable as unknown as ConstructorParameters<
+            typeof StreamTarget
+          >[0],
+        ),
+      }),
+      bufferTarget: null,
+    }
+  }
+  const bufferTarget = new BufferTarget()
+  return {
+    output: new Output({ format: new Mp4OutputFormat(), target: bufferTarget }),
+    bufferTarget,
+  }
+}
+
+/**
+ * Dokončí výstup: stream vrátí `null` (soubor už zavřel `finalize()`), buffer
+ * vrátí hotový Blob.
+ */
+function finishMp4Output(
+  bufferTarget: BufferTarget | null,
+  destination?: ExportDestination,
+): Blob | null {
+  if (destination?.kind === 'stream') {
+    return null
+  }
+  const buffer = bufferTarget?.buffer
+  if (!buffer) {
+    throw new Error('Mediabunny output nevrátil buffer.')
+  }
+  return new Blob([buffer], { type: 'video/mp4' })
 }
 
 /**
@@ -209,11 +273,12 @@ export interface ExportAiOptions {
  * Pozn.: audio NENÍ připojeno do `audioCtx.destination`, takže během exportu
  * uživatel nic neslyší.
  */
-export async function exportVideo(options: ExportOptions): Promise<Blob> {
+export async function exportVideo(options: ExportOptions): Promise<Blob | null> {
   const {
     audioBuffer: srcBuffer,
     presetKey,
     qualityId,
+    destination,
     range,
     watermark,
     credits,
@@ -275,10 +340,7 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
   visualizer.loadPreset(preset, 0)
 
   // 4. Mediabunny output
-  const output = new Output({
-    format: new Mp4OutputFormat(),
-    target: new BufferTarget(),
-  })
+  const { output, bufferTarget } = createMp4Output(destination)
 
   const videoSource = new CanvasSource(canvas, {
     codec: 'avc',
@@ -391,12 +453,8 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
     await audioCtx.close().catch(() => {})
   }
 
-  // 9. Vytvořit Blob z bufferu
-  const buffer = output.target.buffer
-  if (!buffer) {
-    throw new Error('Mediabunny output nevrátil buffer.')
-  }
-  return new Blob([buffer], { type: 'video/mp4' })
+  // 9. Hotovo — stream je už na disku (vrátí null), jinak složíme Blob z bufferu.
+  return finishMp4Output(bufferTarget, destination)
 }
 
 /**
@@ -418,11 +476,12 @@ export async function exportVideo(options: ExportOptions): Promise<Blob> {
  */
 export async function exportVideoModern(
   options: ExportModernOptions,
-): Promise<Blob> {
+): Promise<Blob | null> {
   const {
     audioBuffer: srcBuffer,
     presetId,
     qualityId,
+    destination,
     range,
     watermark,
     credits,
@@ -500,10 +559,7 @@ export async function exportVideoModern(
   const presetInstance = preset.setup(scene, uniforms)
 
   // 5. Mediabunny output (compositor canvas je zdrojem video framů).
-  const output = new Output({
-    format: new Mp4OutputFormat(),
-    target: new BufferTarget(),
-  })
+  const { output, bufferTarget } = createMp4Output(destination)
 
   const videoSource = new CanvasSource(canvas, {
     codec: 'avc',
@@ -624,11 +680,7 @@ export async function exportVideoModern(
     renderer.dispose()
   }
 
-  const buffer = output.target.buffer
-  if (!buffer) {
-    throw new Error('Mediabunny output nevrátil buffer.')
-  }
-  return new Blob([buffer], { type: 'video/mp4' })
+  return finishMp4Output(bufferTarget, destination)
 }
 
 /**
@@ -643,11 +695,12 @@ export async function exportVideoModern(
  */
 export async function exportVideoAi(
   options: ExportAiOptions,
-): Promise<Blob> {
+): Promise<Blob | null> {
   const {
     audioBuffer: srcBuffer,
     imageUrls,
     qualityId,
+    destination,
     range,
     watermark,
     credits,
@@ -883,10 +936,7 @@ export async function exportVideoAi(
   scene.add(mesh)
 
   // 5. Mediabunny output
-  const output = new Output({
-    format: new Mp4OutputFormat(),
-    target: new BufferTarget(),
-  })
+  const { output, bufferTarget } = createMp4Output(destination)
   const videoSource = new CanvasSource(offscreen, {
     codec: 'avc',
     bitrate: VIDEO_BITRATE,
@@ -991,11 +1041,7 @@ export async function exportVideoAi(
     renderer.dispose()
   }
 
-  const buffer = output.target.buffer
-  if (!buffer) {
-    throw new Error('Mediabunny output nevrátil buffer.')
-  }
-  return new Blob([buffer], { type: 'video/mp4' })
+  return finishMp4Output(bufferTarget, destination)
 }
 
 /**

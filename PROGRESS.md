@@ -28,6 +28,21 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 ## Co je hotové
 
+- **Streamovací export — krok 1 (2026-05-29, čeká na runtime ověření Jendou):**
+  Export umí psát MP4 rovnou na disk přes File System Access API → paměť zůstává
+  plochá i u dlouhých / 4K stop (řeší `BufferTarget` in-memory limit). `export.ts`:
+  nový typ `ExportDestination` (`buffer` | `stream`) + helpery `createMp4Output`
+  / `finishMp4Output`; 3 export funkce berou `destination?` a vrací `Blob | null`.
+  Stream = `StreamTarget(writable)` + `Mp4OutputFormat({ fastStart: false })`
+  (append-only, nejnižší paměť); Mediabunny `finalize()` writable zavře sám
+  (ověřeno v source `target.js:389`). `ExportButton.tsx`: `showSaveFilePicker`
+  (Chromium) → handle → `createWritable()`; po streamu soubor zpět přes
+  `getFile()` (disk-backed) pro náhledy/sdílení. Fallback bez API = původní
+  in-memory Blob + auto-download. Ambient typ `src/types/file-system-access.d.ts`
+  (showSaveFilePicker). `tsc -b` 0, žádné nové lint chyby. **Pozn.:** zrušený
+  stream export nechá na disku nedopsaný soubor (Mediabunny dělá close, ne abort).
+  **Další: krok 2 — preset 2160p60 + `isConfigSupported` gating.**
+
 - **Stability audit (2026-05-29):** Vercel deploy READY, build 11s (jen perf
   varování — main chunk 2.44 MB / 619 kB gzip + INEFFECTIVE_DYNAMIC_IMPORT u three).
   Živý test přes Chrome MCP napříč módy (Classic / Modern / Srovnání / AI), vč.

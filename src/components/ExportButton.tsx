@@ -14,6 +14,7 @@ import {
   type ExportProgress,
   type ExportRange,
   type ExportCredits,
+  type ExportDestination,
 } from '../lib/export'
 import { extractThumbnails } from '../lib/thumbnails'
 
@@ -176,13 +177,41 @@ export function ExportButton({
     const controller = new AbortController()
     abortRef.current = controller
 
+    // Pokud prohlížeč umí File System Access API (Chromium), streamujeme MP4
+    // rovnou do souboru na disku — paměť zůstane plochá i u dlouhých / 4K stop.
+    // Jinak fallback: in-memory Blob + klasické stažení.
+    let fileHandle: FileSystemFileHandle | null = null
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            { description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } },
+          ],
+        })
+      } catch (e) {
+        // Uživatel zavřel dialog výběru souboru → tichý návrat, žádná chyba.
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          setStatus('idle')
+          abortRef.current = null
+          return
+        }
+        throw e
+      }
+    }
+
     try {
-      let blob: Blob
+      const destination: ExportDestination = fileHandle
+        ? { kind: 'stream', writable: await fileHandle.createWritable() }
+        : { kind: 'buffer' }
+
+      let blob: Blob | null
       if (mode === 'classic') {
         blob = await exportVideo({
           audioBuffer,
           presetKey,
           qualityId,
+          destination,
           range,
           watermark,
           credits,
@@ -194,6 +223,7 @@ export function ExportButton({
           audioBuffer,
           presetId: presetKey,
           qualityId,
+          destination,
           range,
           watermark,
           credits,
@@ -208,6 +238,7 @@ export function ExportButton({
           audioBuffer,
           imageUrls: aiImageUrls,
           qualityId,
+          destination,
           range,
           watermark,
           credits,
@@ -215,17 +246,29 @@ export function ExportButton({
           onProgress: setProgress,
         })
       }
-      downloadBlob(blob, filename)
+
+      // Stream: soubor je už na disku (Mediabunny ho zavřel ve finalize) —
+      // získáme ho zpět jako disk-backed File pro náhledy/sdílení bez držení
+      // celého souboru v RAM. Buffer: klasické stažení Blobu.
+      let resultBlob: Blob
+      if (blob) {
+        downloadBlob(blob, filename)
+        resultBlob = blob
+      } else if (fileHandle) {
+        resultBlob = await fileHandle.getFile()
+      } else {
+        throw new Error('Export nevrátil žádný výstup.')
+      }
 
       // Pamatovat blob pro Web Share + vyrobit URL pro „Otevřít v novém tabu".
-      resultBlobRef.current = blob
-      const url = URL.createObjectURL(blob)
+      resultBlobRef.current = resultBlob
+      const url = URL.createObjectURL(resultBlob)
       setResultUrl(url)
 
       // Extract 3 thumbnaily (start, middle, end). Fail-safe: pokud se nepodaří,
       // ukážeme jen prázdný done state — nezdržujeme uživatele chybou.
       try {
-        const thumbs = await extractThumbnails(blob, [
+        const thumbs = await extractThumbnails(resultBlob, [
           0,
           effectiveDuration / 2,
           Math.max(0, effectiveDuration - 0.5),
