@@ -21,6 +21,7 @@ import {
   type ExportDestination,
 } from '../lib/export'
 import { extractThumbnails } from '../lib/thumbnails'
+import { showToast } from '../lib/toast'
 
 export type ExportMode = 'classic' | 'modern' | 'ai'
 
@@ -351,18 +352,37 @@ export function ExportButton({
 
   const shareResult = async () => {
     const blob = resultBlobRef.current
-    if (!blob || !canShare) return
+    if (!blob) {
+      showToast('Video není připravené ke sdílení.', 'error')
+      return
+    }
     const file = new File([blob], filename, { type: 'video/mp4' })
     const shareData: ShareData = {
       files: [file],
       title: filename,
       text: `${modeLabel} videoklip · ${formatEta(effectiveDuration)}`,
     }
-    if (!navigator.canShare(shareData)) return
+    // Některé prohlížeče (hlavně desktop) hlásí share API, ale sdílení souboru
+    // neumí — pak nabídneme stažený soubor / „Otevřít video".
+    if (typeof navigator.canShare !== 'function' || !navigator.canShare(shareData)) {
+      showToast(
+        'Tento prohlížeč neumí sdílet video soubor. Použij stažený soubor nebo „Otevřít video".',
+        'info',
+        6000,
+      )
+      return
+    }
     try {
       await navigator.share(shareData)
-    } catch {
-      // Uživatel zrušil sdílení nebo browser odmítl — ignorujeme.
+    } catch (e) {
+      // AbortError = uživatel sdílení zrušil → nic nehlásíme.
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      showToast(
+        'Sdílení se nezdařilo: ' +
+          (e instanceof Error ? e.message : 'neznámá chyba'),
+        'error',
+        6000,
+      )
     }
   }
 

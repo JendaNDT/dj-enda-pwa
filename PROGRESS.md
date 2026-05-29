@@ -28,6 +28,13 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 ## Co je hotové
 
+- **Sdílení exportu — error surfacing (2026-05-29):** „Sdílet" tiše spolykalo
+  chyby (`catch {}`), takže klik vypadal jako že nic nedělá. Ověřeno živě přes
+  Chrome, že **Web Share se souborem na Jendově Macu funguje** (`navigator.share`
+  s `files` projde). `shareResult` nově: prázdný blob / nepodporovaný share →
+  toast s vysvětlením; reálná chyba share() → toast s důvodem; `AbortError`
+  (uživatel zrušil) → ticho. `tsc -b` 0.
+
 - **PWA auto-reload fix (2026-05-29):** appka se ~2 s po načtení sama
   přenačítala — `registerType: 'autoUpdate'` reloadoval stránku při výměně SW
   (po každém deployi). Přepnuto na **`prompt`** + `onNeedRefresh` → toast
