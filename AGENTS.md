@@ -11,10 +11,13 @@ zastav se a zeptej se.
 
 PWA aplikace, která vezme audio stopu (typicky export ze Suno AI) a vygeneruje
 hotový hudební videoklip připravený k nahrání na YouTube — **vše v prohlížeči,
-bez serveru**. Pro MVP stačí algoritmické vizuály (Milkdrop-style); cílem je
-později přidat vlastní Three.js + TSL shadery a volitelně AI keyframy přes Fal.ai.
+bez serveru**. Pro MVP stačily algoritmické vizuály (Milkdrop-style); později
+přibyl vlastní Three.js + TSL Modern mód a volitelné AI keyframy (Fáze 3 nakonec
+realizována přes **HuggingFace FLUX**, ne Fal.ai).
 
-Plný plán a stav viz `ROADMAP.md` a `PROGRESS.md`.
+**Aktuální stav: Fáze 1–6 hotové a na produkci** (3 módy Classic / Modern / AI
++ Srovnání, 8 Modern presetů, preset náhledy, Classic ladicí parametry). Plný
+plán a stav viz `ROADMAP.md` a `PROGRESS.md`.
 
 ---
 
@@ -152,7 +155,9 @@ Po každé netriviální změně:
    `--noEmit` typové chyby ignoruje skrz `moduleResolution: bundler`. Vždy
    ověřit OBA před commitem, hlavně po editaci `src/lib/modernPresets.ts`
    (TSL has strict overload resolution).**
-3. `npm run lint` (jakmile bude nastavený)
+3. `npm run lint` (nastavený; pozor: **NENÍ v build pipeline** — `build = tsc -b
+   && vite build`. Lint chyby tedy neblokují deploy; pár pre-existing chyb/varování
+   je v repu OK. Hlídej, ať nepřidáš NOVÉ.)
 4. `npm test` nebo `vitest run` (jakmile budou testy)
 5. Ohlas výsledek: „X / Y prošlo, 0 selhalo" nebo „selhalo na Z, chyba: …".
 
@@ -243,6 +248,51 @@ příští session zase trefila. Formát: krátký bullet point + datum.
   fresh `npm install` lokálně. **Pravidlo do budoucna:** scaffold a edity
   souborů ve sandboxu OK; všechny `npm install` / `npm run build` /
   `npm run dev` musí běžet u uživatele na Macu, ne ve sandboxu.
+- **2026-05-29** — **Cowork sandbox neumí psát do `.git`** (mount vrací u
+  `index.lock` „Operation not permitted", nejde ani smazat). Commit + push proto
+  dělá Jenda lokálně — Claude připraví/edituje soubory a předá code block s
+  `rm -f .git/index.lock` + `git add/commit/push`. Vite build v sandboxu taky
+  nejde (chybí linux-arm64 rolldown binding) → automatická brána je `tsc -b`,
+  runtime ověřuje Jenda v prohlížeči, deploy lze zkontrolovat přes Vercel MCP.
+- **2026-05-29** — **TSL `mix(a, b, f)` nebere konkrétní `float` faktor** (z
+  `clamp` / `fract` / `length`) ve strict typings — projde jen `any` z uniformů.
+  Symptom: `TS2769 ... not assignable to FloatOrNumber` (zkouší overload
+  `mix(float,float,float)`). Workaround: **ruční lerp** `a.add(b.sub(a).mul(f))`
+  (čistá vec3 aritmetika, codebase ji běžně používá) + paleta přes `vec3(...)`,
+  ne `color(...)`. Stalo se ve Fractal Noise + Terrain Mesh (Fáze 4.15/4.14);
+  stejná rodina jako Tunnel `vec3(a,a,a)` fix.
+- **2026-05-29** — **Render loop má číst `visualizerRef.current?.render()`**, ne
+  captured `visualizer` proměnnou. Umožní to za běhu **swapnout Butterchurn
+  instanci (rebuild)** bez přerušení renderingu — využito ve Fázi 6 pro změnu
+  `textureRatio` (ostrost), který nemá live setter.
+- **2026-05-29** — **Butterchurn 3.0.0-beta.5 API** (ověřeno čtením source
+  `node_modules/@webamp/butterchurn/dist/butterchurn.js`; balíček nemá .d.ts,
+  proto ruční `src/types/butterchurn.d.ts`): live settery
+  `setInternalMeshSize(w,h)` a `setOutputAA(bool)`; create opts `meshWidth`/
+  `meshHeight`, `textureRatio` (ostrost — BEZ live setteru, jen přes rebuild),
+  `outputFXAA`, `pixelRatio`, `clearColor`; dál `loadPreset(preset, blendTime)`,
+  `launchSongTitleAnim`, `loadExtraImages`. **Milkdrop presety samotné ladit
+  nejdou** (rovnice zapečené v datech) — laditelné je jen globální chování renderu.
+- **2026-05-29** — **Comparison mode (Fáze 5.12) — sdílené audio:** jeden
+  `AudioContext` + jeden `AudioBufferSourceNode` → gain → destination. Classic
+  přes `connectAudio(source)` (vlastní analyser), Modern přes předpočítané Meyda
+  features indexované `audioCtx.currentTime − startTime`. **Jeden rAF loop
+  renderuje oba enginy** → sync. Postaveno jako samostatný `ComparisonView.tsx`,
+  NEsahá do funkčních single módů (izolace = žádné regrese).
+- **2026-05-29** — **IndexedDB: oddělené databáze místo sdílení storů.**
+  `aiCache.ts` má DB `dj-enda`; preset náhledy (Fáze 5.13) dostaly vlastní DB
+  `dj-enda-thumbs` — vyhne se koordinaci `DB_VERSION`/`onupgradeneeded` napříč
+  soubory. WebGL canvas → blob náhled: `drawImage` do 2D canvasu MUSÍ být ve
+  stejném synchronním turnu jako `render()` (bez `preserveDrawingBuffer` se
+  drawing buffer po composit fázi vyčistí).
+- **2026-05-29** — **eslint-plugin-react-hooks v7** přidal pravidla:
+  `react-hooks/refs` (zákaz zápisu `ref.current` během renderu → dělej v
+  `useEffect`), `react-hooks/immutability` (funkce volaná v efektu před svou
+  deklarací → deklaruj výš nebo `// eslint-disable-next-line`) a
+  `react-hooks/static-components` (nedefinuj komponentu uvnitř komponenty).
+  Pre-existing `react-refresh/only-export-components` u `pickInitialPreset`
+  exportu ve `Visualizer.tsx` je neškodný — **eslint není v build pipeline**
+  (`build = tsc -b && vite build`), takže gate zůstává `tsc -b`.
 
 ---
 

@@ -777,87 +777,80 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 ## Co je rozjeté
 
-- Nic. Čekáme na ověření 2.3a v Modern módu a souhlas s **2.3b** (Particle Flow).
+- Nic. Fáze 1–6 hotové, vše na produkci.
 
-## Co je další — Fáze 4 (plán pro nový Cowork chat)
+## Co je další (backlog)
 
-**Fáze 4 = polish & UX vylepšení**, ne fundamentální nové features.
-Detail viz `ROADMAP.md` sekce „Fáze 4".
+Žádný otevřený plánovaný bod. Volitelný backlog (detail v `ROADMAP.md`):
 
-**13 plánovaných bodů**, doporučené pořadí:
-
-1. **Round 1 — Quick wins (doporučený start):**
-   - 4.1 Vyhledávání v Classic preset dropdown
-   - 4.2 Oblíbené presety (Classic + Modern, localStorage)
-   - 4.3 Audio trim/range pro export
-
-2. **Round 2 — Desktop layout refactor:**
-   - 4.5 **Desktop wide layout + plná responzivita** (velký redesign,
-     priorita podle uživatele — viz feedback memory `feedback-desktop-wide-layout.md`)
-
-3. **Round 3 — UX dotahy:** 4.4, 4.6, 4.7
-4. **Round 4 — Power features:** 4.8, 4.9, 4.10
-5. **Round 5 — Nice to have:** 4.11, 4.12, 4.13
-
-### Klíčový hint pro budoucí session
-
-Uživatel explicitně rozhodl, že **prioritou je desktop wide layout**
-(MacBook M4 primary device), ne mobilní. Aplikace má využít celou šířku
-monitoru — žádný úzký centrovaný column `max-w-xl`. Plný responzivní
-design s breakpointy. Viz memory file + AGENTS.md sekce „Design / Layout".
+- **Per-preset parametry pro Modern** (TSL uniformy → posuvníky v UI) — nejlepší
+  kandidát na další fázi. AI má parametry už ve stylu/promptu; Classic má ladění
+  z Fáze 6.
+- Nahrát 3 **showcase MP4** do `public/showcase/{classic,modern,ai}.mp4` (Hero je
+  použije bez code změn) — vyrábí Jenda exportem z appky.
+- **2.5d** Classic export do Web Workeru — doporučeno vynechat (Butterchurn
+  vyžaduje real-time AudioContext, ve workeru není; export to nezrychlí).
 
 ## Známé bugy / problémy
 
-- `npm install` produkuje EPERM warningy na cleanup v sandbox prostředí, ale
-  výsledek je správný. Při lokálním běhu na uživatelově Macu se nebudou objevovat.
-- `npm run build` nepřepíše existující `dist/` v sandboxu (EPERM na unlink).
-  Workaround během sessions: `npx vite build --outDir /tmp/dj-enda-build`.
-  Lokálně u uživatele tento problém není.
-- `src/App.css` zbyl ve formě dvou-řádkového komentáře (sandbox nepovolil delete).
-  Soubor se neimportuje, na build nemá vliv. Lze smazat ručně z Finderu.
+- **Cowork sandbox neumí psát do `.git`** (`index.lock` „Operation not permitted")
+  → commit/push dělá Jenda lokálně. **Vite build v sandboxu nejde** (chybí
+  linux-arm64 rolldown binding) → automatická brána je `npx tsc -b`, runtime
+  testuje Jenda v prohlížeči.
+- ESLint má pár **pre-existing** chyb/varování (`react-refresh/only-export-components`
+  u `pickInitialPreset` ve Visualizer.tsx, nepoužitý eslint-disable). NENÍ v build
+  pipeline (`build = tsc -b && vite build`), neblokuje deploy — jen nepřidávat nové.
+- `npm install` musí běžet u uživatele na Macu (Darwin arm64), ne ve sandboxu
+  (Linux) — jinak se v lockfile zafixuje špatná nativní binárka rolldownu.
 
-## Klíčová rozhodnutí (z této session)
+## Klíčová rozhodnutí
 
-- **Stack ověřen, dvě změny oproti původnímu PDF:**
-  - Mediabunny místo deprecated mp4-muxer.
-  - @webamp/butterchurn místo originálního jberg/butterchurn.
-- **Workflow:** vibe-coding režim, AGENTS.md je primárním kontraktem,
-  ROADMAP.md je seznam úkolů, PROGRESS.md je tento snapshot.
-- **Zatím žádný backend.** Vše v prohlížeči. Fal.ai až ve Fázi 3 přes BYO-key.
+- **Stack:** Mediabunny místo deprecated mp4-muxer; `@webamp/butterchurn` místo
+  originálního jberg/butterchurn; Fáze 3 AI přes **HuggingFace FLUX** (ne Fal.ai).
+- **Butterchurn (Classic) zůstává natrvalo** jako default; Modern (Three.js) je
+  paralelní alternativa, ne náhrada. Export podporuje oba.
+- **Žádný backend.** Vše v prohlížeči, AI přes BYO HF token.
+- **Workflow:** vibe-coding; AGENTS.md = kontrakt, ROADMAP.md = úkoly,
+  PROGRESS.md = tento snapshot. Před push vždy `tsc -b`.
 
 ## Struktura souborů (aktuální stav)
 
 ```
-DJ Enda PWA/
-├── AGENTS.md                # kontrakt projektu
-├── ROADMAP.md               # seznam fází a bodů
-├── PROGRESS.md              # tento snapshot
-├── SKILL.md                 # plný vibecoder workflow
-├── Claude.pdf               # opinionovaná rekomendace
-├── PWA pro generování hudebních videoklipů.pdf
-├── README.md                # default Vite README (přepíšeme později)
-├── package.json             # React 19, TypeScript 6, Vite 8
-├── package-lock.json
-├── vite.config.ts
-├── tsconfig.json / tsconfig.app.json / tsconfig.node.json
-├── eslint.config.js
-├── index.html
-├── .gitignore
-├── public/                  # vite.svg
-├── src/
-│   ├── main.tsx
-│   ├── App.tsx              # default Vite homepage (přepíšeme v 1.1b)
-│   ├── App.css              # smažeme v 1.1b
-│   ├── index.css            # přepíšeme na @import "tailwindcss"
-│   ├── vite-env.d.ts
-│   └── assets/react.svg
-├── dist/                    # výstup buildu (gitignored)
-└── node_modules/            # cca 200 MB, gitignored
+src/
+├── main.tsx
+├── App.tsx                     # layout, mode toggle (Classic/Modern/AI/Srovnání), shortcuts
+├── index.css                   # @import "tailwindcss" + custom keyframes
+├── components/
+│   ├── AudioUpload.tsx         # drag-drop upload
+│   ├── Visualizer.tsx          # Classic (Butterchurn) + ladicí parametry (Fáze 6)
+│   ├── ThreeVisualizer.tsx     # Modern (Three.js WebGPU / TSL)
+│   ├── AiHybrid.tsx            # AI mód — HF token, storyboard, generování
+│   ├── AiVisualizer.tsx        # AI atlas + crossfade shader
+│   ├── ComparisonView.tsx      # Srovnání Classic + Modern (sdílené audio)
+│   ├── PresetCombobox.tsx      # Classic preset search + favorites + náhledy
+│   ├── ExportButton.tsx        # export UI (kvalita, trim, credits, watermark)
+│   ├── Hero.tsx                # pre-upload showcase
+│   └── ToastContainer.tsx      # toast notifikace
+├── lib/
+│   ├── audio.ts                # decode + hook
+│   ├── audioFeatures.ts        # Meyda offline features (RMS, pásma, beat)
+│   ├── modernPresets.ts        # 8 TSL presetů + uniformy
+│   ├── export.ts               # export pipeline (Classic/Modern/AI)
+│   ├── exportCompositor.ts     # 2D overlay (credits, watermark)
+│   ├── thumbnails.ts           # post-export thumbnaily
+│   ├── presetThumbnails.ts     # Classic preset náhledy (IndexedDB dj-enda-thumbs)
+│   ├── usePresetThumbnails.ts  # hook pro náhledy
+│   ├── classicControls.ts      # Classic ladicí parametry (Fáze 6) + localStorage
+│   ├── favorites.ts            # oblíbené presety (localStorage)
+│   ├── hfClient.ts             # HuggingFace client + token
+│   ├── aiCache.ts              # IndexedDB cache AI keyframes (dj-enda)
+│   └── toast.ts                # toast subscribe systém
+└── types/
+    ├── butterchurn.d.ts        # ruční typy (+ setInternalMeshSize, setOutputAA)
+    └── visualizerHandle.ts     # imperative API pro keyboard shortcuts
 ```
 
 ## Otázky a otevřené body
 
-- Jméno projektu pro `package.json`? „dj-enda-pwa"? „dj-enda"? Jiné?
-- Cílová doména pro nasazení (Vercel subdoména stačí pro start, nebo vlastní)?
-- Preferuje uživatel `npm`, `pnpm` nebo `bun`? (pro MVP doporučujeme `npm` =
-  default v `npm create vite`).
+Vyřešeno: package `dj-enda-pwa`, deploy = Vercel subdoména, balíčkovač `npm`.
+Žádné otevřené otázky — další na řadě je (až bude chuť) per-preset ladění Modern.

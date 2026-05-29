@@ -7,20 +7,33 @@ PWA pro tvorbu audio-reaktivních hudebních videoklipů přímo v prohlížeči
 ## Co to umí
 
 Nahraj audio (Suno AI export, libovolné MP3 / WAV / M4A / OGG / FLAC, do 200 MB)
-a aplikace ti vygeneruje hudební videoklip s vizualizérem ve stylu Milkdrop —
-částice, vlny, geometrické tvary měnící se podle hudby. Můžeš si vybrat z ~150
-presetů a měnit je za běhu plynulým blendem.
+a aplikace ti vygeneruje hudební videoklip s vizualizérem reagujícím na hudbu.
+Na výběr jsou tři vizuální módy plus srovnávací režim:
 
-Výstup je **MP4 1080p60** (H.264 + AAC, 12 Mbps), připravený k nahrání na YouTube.
+- **Classic** — Milkdrop vizualizér (Butterchurn), ~150 presetů s vyhledáváním,
+  oblíbenými, náhledy v rozbalovátku a ladicími parametry (auto-cyklení presetů,
+  doba přechodu, detail mřížky, anti-aliasing, ostrost).
+- **Modern** — vlastní WebGPU/Three.js (TSL) shadery, 8 presetů (Sphere,
+  Particles, Kaleidoscope, Wave Field, Plasma, Tunnel, Terrain Mesh, Fractal
+  Noise) reagujících na frekvenční pásma (kick / snare / hi-hat).
+- **AI Hybrid** — AI keyframy z HuggingFace (FLUX) + shader crossfade mezi nimi
+  (vyžaduje vlastní HF token, BYO-key).
+- **Srovnání** — Classic a Modern vedle sebe na jeden sdílený zvuk.
+
+Výstup je **MP4** (H.264 + AAC, volitelně 720p–1440p, default 1080p60 12 Mbps),
+volitelně s oříznutím, intro/outro titulky a watermarkem, připravený na YouTube.
 Všechno běží lokálně v prohlížeči — žádný backend, žádný upload do cloudu, žádná
-registrace.
+registrace. Instalovatelné jako PWA, klávesové zkratky, plně responzivní desktop
+layout.
 
 ## Technologický stack
 
 - **React 19 + Vite + TypeScript + Tailwind 4** — frontend
 - **vite-plugin-pwa** — PWA manifest, service worker, instalovatelnost
-- **Web Audio API** — dekódování a analýza audia
-- **@webamp/butterchurn + butterchurn-presets** — Milkdrop vizualizér
+- **Web Audio API + Meyda** — dekódování a offline analýza audia (RMS, pásma, beat)
+- **@webamp/butterchurn + butterchurn-presets** — Classic (Milkdrop) vizualizér
+- **Three.js + WebGPURenderer (TSL)** — Modern vlastní shadery
+- **HuggingFace Inference (FLUX)** — AI keyframy (volitelné, BYO-key)
 - **Mediabunny** — export do MP4 přes WebCodecs API (H.264 + AAC)
 
 ## Lokální vývoj
