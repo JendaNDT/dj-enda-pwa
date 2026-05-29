@@ -351,12 +351,16 @@ export function ExportButton({
   }
 
   const shareResult = async () => {
+    // DOČASNÁ DIAGNOSTIKA sdílení — odstranit po vyřešení.
+    console.log('[DJ share] klik. blob=', resultBlobRef.current?.size, 'typeof share=', typeof navigator.share, 'typeof canShare=', typeof navigator.canShare)
     const blob = resultBlobRef.current
     if (!blob) {
+      console.warn('[DJ share] resultBlobRef je null → konec')
       showToast('Video není připravené ke sdílení.', 'error')
       return
     }
     if (typeof navigator.share !== 'function') {
+      console.warn('[DJ share] navigator.share není funkce → konec')
       showToast('Tento prohlížeč neumí sdílet. Video je uložené na disku.', 'info', 6000)
       return
     }
@@ -364,7 +368,9 @@ export function ExportButton({
     // Jen title + files — kombinace text + files dělá na některých share
     // targetech problém, takže text vynecháváme.
     const shareData: ShareData = { files: [file], title: filename }
+    console.log('[DJ share] file=', file.size, file.name, '| canShare(data)=', typeof navigator.canShare === 'function' ? navigator.canShare(shareData) : 'no-canShare')
     if (typeof navigator.canShare === 'function' && !navigator.canShare(shareData)) {
+      console.warn('[DJ share] canShare(data) = false → konec')
       showToast(
         'Tento prohlížeč neumí sdílet video soubor. Použij stažený soubor nebo „Otevřít video".',
         'info',
@@ -375,10 +381,13 @@ export function ExportButton({
     // Okamžitá viditelná zpětná vazba — klik nikdy „nemlčí". Zmizí, jakmile se
     // share dialog otevře / dokončí / zruší.
     const pendingId = showToast('Otevírám sdílení…', 'info', 0)
+    console.log('[DJ share] volám navigator.share()…')
     try {
       await navigator.share(shareData)
+      console.log('[DJ share] navigator.share() RESOLVED ok')
       dismissToast(pendingId)
     } catch (e) {
+      console.error('[DJ share] navigator.share() REJECTED:', e instanceof Error ? e.name : e, e instanceof Error ? e.message : '')
       dismissToast(pendingId)
       // AbortError = uživatel sdílení zrušil — hlásíme neutrálně, ne jako chybu.
       if (e instanceof DOMException && e.name === 'AbortError') {
