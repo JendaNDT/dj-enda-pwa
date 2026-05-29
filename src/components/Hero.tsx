@@ -18,8 +18,8 @@ interface ShowcaseItem {
   kind: 'classic' | 'modern' | 'ai'
   label: string
   description: string
-  /** Cesta k videu v `public/`. */
-  videoSrc: string
+  /** Cesta k videu v `public/`. Když chybí, karta rovnou ukáže placeholder (bez 404). */
+  videoSrc?: string
   /** Tailwind gradient classes pro placeholder fallback. */
   placeholderGradient: string
   /** Emoji nebo malý SVG pro placeholder. */
@@ -47,7 +47,8 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
     kind: 'ai',
     label: 'AI Hybrid',
     description: 'AI obrazy (Flux) + shader crossfade, hudebně synchronizované',
-    videoSrc: '/showcase/ai.mp4',
+    // videoSrc zatim chybi -> rovnou placeholder (zadny 404). Az bude AI klip,
+    // pridat zpet: videoSrc: '/showcase/ai.mp4'
     placeholderGradient: 'from-amber-900 via-rose-900 to-purple-900',
     icon: '✦',
   },
@@ -87,10 +88,14 @@ function ShowcaseCard({ item }: { item: ShowcaseItem }) {
     return () => v.removeEventListener('error', handleError)
   }, [])
 
+  // Video renderujeme jen když máme cestu a načtení zatím neselhalo. Jinak rovnou
+  // placeholder — žádný zbytečný 404 request v konzoli (chybějící AI klip).
+  const showVideo = Boolean(item.videoSrc) && !videoFailed
+
   return (
     <div className="group relative aspect-video rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 hover:border-purple-500/50 transition-colors">
       {/* Video — pokud existuje. Fallback na placeholder gradient při error. */}
-      {!videoFailed && (
+      {showVideo && (
         <video
           ref={videoRef}
           src={item.videoSrc}
@@ -104,8 +109,8 @@ function ShowcaseCard({ item }: { item: ShowcaseItem }) {
         />
       )}
 
-      {/* Placeholder — vždy vykreslený, ale překrytý videem (pokud běží). */}
-      {videoFailed && (
+      {/* Placeholder — když není video (chybí cesta nebo selhalo načtení). */}
+      {!showVideo && (
         <div
           className={`absolute inset-0 bg-gradient-to-br ${item.placeholderGradient} flex items-center justify-center`}
         >

@@ -155,6 +155,9 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
       (216 kB) — export z appky (720p) → ffmpeg na 640x360 tiché loopy
       (`-an`, H.264, crf 33/30, `+faststart`). AI zatím zůstává na
       placeholderu. Popis Modern karty opraven na „8 vlastních efektů".
+    * **AI 404 cleanup:** `videoSrc` je teď optional; AI karta ho nemá →
+      `showVideo` false → renderuje placeholder rovnou, bez `<video>` requestu
+      (žádný 404 `ai.mp4` v konzoli). Až bude AI klip, vrátit `videoSrc`.
     * **Label overlay** — gradient bottom-to-top s názvem režimu + popisem
       pod ním. Vždy viditelný, na hover karta zezelená border.
     * Mount v `App.tsx` pre-upload větvi nad AudioUpload zónou.
