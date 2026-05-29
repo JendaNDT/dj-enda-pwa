@@ -21,7 +21,7 @@ import {
   type ExportDestination,
 } from '../lib/export'
 import { extractThumbnails } from '../lib/thumbnails'
-import { showToast } from '../lib/toast'
+import { showToast, dismissToast } from '../lib/toast'
 
 export type ExportMode = 'classic' | 'modern' | 'ai'
 
@@ -356,15 +356,15 @@ export function ExportButton({
       showToast('Video není připravené ke sdílení.', 'error')
       return
     }
-    const file = new File([blob], filename, { type: 'video/mp4' })
-    const shareData: ShareData = {
-      files: [file],
-      title: filename,
-      text: `${modeLabel} videoklip · ${formatEta(effectiveDuration)}`,
+    if (typeof navigator.share !== 'function') {
+      showToast('Tento prohlížeč neumí sdílet. Video je uložené na disku.', 'info', 6000)
+      return
     }
-    // Některé prohlížeče (hlavně desktop) hlásí share API, ale sdílení souboru
-    // neumí — pak nabídneme stažený soubor / „Otevřít video".
-    if (typeof navigator.canShare !== 'function' || !navigator.canShare(shareData)) {
+    const file = new File([blob], filename, { type: 'video/mp4' })
+    // Jen title + files — kombinace text + files dělá na některých share
+    // targetech problém, takže text vynecháváme.
+    const shareData: ShareData = { files: [file], title: filename }
+    if (typeof navigator.canShare === 'function' && !navigator.canShare(shareData)) {
       showToast(
         'Tento prohlížeč neumí sdílet video soubor. Použij stažený soubor nebo „Otevřít video".',
         'info',
@@ -372,11 +372,19 @@ export function ExportButton({
       )
       return
     }
+    // Okamžitá viditelná zpětná vazba — klik nikdy „nemlčí". Zmizí, jakmile se
+    // share dialog otevře / dokončí / zruší.
+    const pendingId = showToast('Otevírám sdílení…', 'info', 0)
     try {
       await navigator.share(shareData)
+      dismissToast(pendingId)
     } catch (e) {
-      // AbortError = uživatel sdílení zrušil → nic nehlásíme.
-      if (e instanceof DOMException && e.name === 'AbortError') return
+      dismissToast(pendingId)
+      // AbortError = uživatel sdílení zrušil — hlásíme neutrálně, ne jako chybu.
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        showToast('Sdílení zrušeno.', 'info')
+        return
+      }
       showToast(
         'Sdílení se nezdařilo: ' +
           (e instanceof Error ? e.message : 'neznámá chyba'),
