@@ -4,19 +4,16 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-29
-**Aktuální fáze:** Fáze 5 — 12 z 13 bodů done, zbývá poslední bod 5.12
-**Aktuální bod:** 5.1–5.11 + 5.13 hotové a na produkci. Round 3 (5.10–5.11)
-i Round 4 bod 5.13 commitnuté + pushnuté. Zbývá už jen **5.12 Comparison mode**.
+**Aktuální fáze:** Fáze 5 — ✅ KOMPLETNÍ (13/13 bodů, vše na produkci)
+**Aktuální bod:** Žádný otevřený. Fáze 1–5 hotové a na produkci.
 
 **HAND-OFF pro nový chat:**
-1. **5.12 Comparison mode (L)** — poslední bod Fáze 5. 3 vizualizéry vedle sebe
-   se sdíleným audio zdrojem. Plán v ROADMAP.md. Největší risk bodu = shared
-   audio source refactor pro Classic/Modern/AI najednou (dnes má každý vlastní
-   AudioContext). Po 5.12 je Fáze 5 hotová.
-2. **Nahrát 3 showcase MP4** (volitelné ale doporučené):
-   - Vyrobit krátké (~10s) ukázky v Classic / Modern / AI módu, 720p
-   - Uložit jako `public/showcase/classic.mp4`, `modern.mp4`, `ai.mp4`
-   - Hero je automaticky použije bez code změn (smart fallback)
+- Všechny plánované fáze (1–5) hotové. Další práce = nová fáze nebo backlog.
+- Volitelný backlog: **4.14** Modern preset Terrain Mesh, **4.15** Fractal Noise,
+  **2.5d** Classic export do Web Workeru, nahrát 3 showcase MP4 do
+  `public/showcase/{classic,modern,ai}.mp4` (Hero je použije bez code změn).
+- Workflow: před push `npx tsc -b`; commit/push dělá Jenda lokálně (Cowork
+  sandbox neumí psát do `.git` — index.lock „Operation not permitted").
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -27,6 +24,32 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 5 Round 4 — 5.12 Comparison mode (Classic vs Modern):**
+  - **`src/components/ComparisonView.tsx`** (nový, samostatný — nesahá do
+    funkčních Classic / Modern / AI módů, aby comparison nemohl způsobit regrese).
+    Classic (Butterchurn) + Modern (Three TSL) vedle sebe nad **jedním sdíleným
+    AudioContextem**:
+    * Jeden `AudioBufferSourceNode` → gain → destination (jediný slyšitelný zvuk).
+    * Classic: `butterchurn.connectAudio(source)` (Butterchurn si staví vlastní
+      real-time analyser).
+    * Modern: předpočítané Meyda features (`extractFeatures`) indexované přes
+      `audioCtx.currentTime − startTime`.
+    * **Jeden `requestAnimationFrame` loop** renderuje oba enginy → dokonalý sync.
+    * Idle preview: Classic přes tichý oscilátor (princip 5.11), Modern decay —
+      obě dlaždice žijí ještě před spuštěním.
+    * Společné controls (Spustit / Pauza / Pokračovat, hlasitost), tlačítko
+      „Náhodný" preset per dlaždice (mění sdílený App stav → promítne se i do
+      single módů Classic/Modern).
+    * Restart po `ended`: `start()` nejdřív `stopAudioNodes()` (idle osc +
+      případný předchozí source), pak vytvoří nový source.
+  - **`App.tsx`** — 4. mód `'comparison'` ve `VisualizerMode`, toggle tlačítko
+    „Srovnání" + subtitle, render `<ComparisonView>` (sdílí `currentPreset` +
+    `modernPresetId` se single módy). Export v sidebaru pro comparison skrytý
+    (jako AI) — export se dělá ve zvoleném single módu.
+  - `npx tsc -b` exit 0, ESLint 0 chyb i varování. Ověřeno v prohlížeči (sync,
+    jediný zvuk, pauza/pokračovat, náhodné presety, žádný leak při přepnutí).
+  - **Tím je Fáze 5 kompletní (13/13). Fáze 1–5 hotové.**
 
 - **Fáze 5 Round 4 — 5.13 Preset náhledy (thumbnails):**
   - **`src/lib/presetThumbnails.ts`** — samostatná IndexedDB databáze

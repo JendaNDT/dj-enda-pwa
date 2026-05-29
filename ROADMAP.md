@@ -180,7 +180,7 @@ a delight detaily. Rozdělené do 4 roundů podle dopadu a velikosti.
 
 | # | Bod | Velikost |
 |---|---|---|
-| 5.12 | Comparison mode (3 vizualizéry side-by-side, sdílený audio source) | L |
+| 5.12 | Comparison mode — Classic + Modern side-by-side, sdílený audio source ✅ done (AI vynecháno: vyžaduje keyframes + duplikaci atlas shaderu) | L |
 | 5.13 | Preset thumbnails v Classic dropdown (background gen + IndexedDB cache) ✅ done | L |
 
 ### Doporučené pořadí implementace

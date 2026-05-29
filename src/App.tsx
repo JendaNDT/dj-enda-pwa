@@ -3,6 +3,7 @@ import { AudioUpload } from './components/AudioUpload'
 import { Visualizer, pickInitialPreset } from './components/Visualizer'
 import { ThreeVisualizer } from './components/ThreeVisualizer'
 import { AiHybrid } from './components/AiHybrid'
+import { ComparisonView } from './components/ComparisonView'
 import { ExportButton } from './components/ExportButton'
 import { ToastContainer } from './components/ToastContainer'
 import { Hero } from './components/Hero'
@@ -15,7 +16,7 @@ import {
 import { DEFAULT_PRESET_ID } from './lib/modernPresets'
 import type { VisualizerHandle } from './types/visualizerHandle'
 
-type VisualizerMode = 'classic' | 'modern' | 'ai'
+type VisualizerMode = 'classic' | 'modern' | 'ai' | 'comparison'
 
 /**
  * `beforeinstallprompt` event není v lib.dom.d.ts (Chrome-specific PWA API),
@@ -405,6 +406,18 @@ function App() {
                       >
                         AI Hybrid
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setVisualizerMode('comparison')}
+                        title="Classic a Modern vedle sebe na stejný zvuk"
+                        className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
+                          visualizerMode === 'comparison'
+                            ? 'bg-purple-600 text-white'
+                            : 'text-neutral-400 hover:text-neutral-200'
+                        }`}
+                      >
+                        Srovnání
+                      </button>
                     </div>
                     <p className="text-xs text-neutral-500 max-w-md text-center md:text-left">
                       {visualizerMode === 'classic' &&
@@ -413,6 +426,8 @@ function App() {
                         'Vlastní WebGPU shadery — 6 efektů (Sphere, Particles, Kaleidoscope, Wave, Plasma, Tunnel), 3-5× rychlejší export.'}
                       {visualizerMode === 'ai' &&
                         'AI obrazy z HuggingFace (Flux) + shader crossfade. Vyžaduje HF token. Filmově vypadající výstup.'}
+                      {visualizerMode === 'comparison' &&
+                        'Classic a Modern vedle sebe na stejný zvuk — porovnej a vyber, který engine ti sedí.'}
                     </p>
                   </div>
                 )}
@@ -442,6 +457,16 @@ function App() {
                     <AiHybrid
                       audioBuffer={buffer}
                       audioFilename={audioFile.name}
+                    />
+                  )}
+
+                  {buffer && visualizerMode === 'comparison' && (
+                    <ComparisonView
+                      audioBuffer={buffer}
+                      classicPreset={currentPreset}
+                      onClassicPresetChange={setCurrentPreset}
+                      modernPresetId={modernPresetId}
+                      onModernPresetChange={setModernPresetId}
                     />
                   )}
                 </div>
