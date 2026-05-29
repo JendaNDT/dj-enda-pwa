@@ -569,6 +569,157 @@ export const tunnel: ModernPreset = {
   },
 }
 
+// ─── Preset: Terrain Mesh ─────────────────────────────────────────────────────
+
+/**
+ * Audio-driven height field — vertex displacement na jemně dělené ploše.
+ * `low` band řídí výšku hřebenů, `mid` rychlost scrollu, `beat` pulse; barva
+ * podle elevace + `rms`/`high`. Plocha je nakloněná (rotation.x) a posunutá do
+ * dálky, takže displacement čteme jako 3D terén ubíhající k horizontu.
+ *
+ * Pozor na fixní kameru (z=3, FOV 60): rozměry + naklonění jsou zvolené tak,
+ * aby ani špičky hřebenů neprošly za kameru (žádné clipping artefakty).
+ */
+export const terrainMesh: ModernPreset = {
+  id: 'terrain-mesh',
+  name: 'Terrain Mesh',
+  description: 'Audio-driven height field — terén z deformované plochy',
+  setup(scene, uniforms) {
+    const geometry = new THREE.PlaneGeometry(11, 7, 180, 120)
+
+    // Sdílená height funkce — volaná z positionNode (vertex displacement)
+    // i colorNode (barva podle elevace). Oba čtou stejný (neposunutý)
+    // positionLocal, takže barva sedí na reliéf.
+    const heightField = () => {
+      const p = positionLocal
+      const speed = uniforms.mid.mul(0.6).add(0.3)
+      const scroll = uniforms.audioTime.mul(speed)
+      const h1 = sin(p.x.mul(1.3).add(scroll))
+      const h2 = sin(p.y.mul(1.1).sub(scroll.mul(0.8)))
+      const h3 = sin(p.x.add(p.y).mul(0.9).add(scroll.mul(0.5)))
+      // Ridged: abs() vyrobí ostřejší hřebeny než hladká sinusoida.
+      const ridge = abs(h1.add(h2).add(h3).mul(0.333))
+      const amp = uniforms.low.mul(1.5).add(uniforms.beat.mul(0.6)).add(0.2)
+      return ridge.mul(amp)
+    }
+
+    const material = new MeshBasicNodeMaterial({ side: THREE.DoubleSide })
+
+    material.positionNode = Fn(() => {
+      return positionLocal.add(normalLocal.mul(heightField()))
+    })()
+
+    material.colorNode = Fn(() => {
+      const height = heightField()
+      // Ruční lerp místo mix() — mix() v těchto TSL typings nebere konkrétní
+      // float faktor (z clamp), jen `any` z uniformů. `a.add(b.sub(a).mul(f))`
+      // je čistá vec3 aritmetika, kterou codebase běžně používá.
+      const valley = vec3(0.04, 0.1, 0.33)
+      const slope = vec3(0.55, 0.15, 0.85)
+      const peak = vec3(1.0, 0.6, 0.2)
+      const f1 = clamp(height.mul(1.6), 0.0, 1.0)
+      const f2 = clamp(height.sub(0.55).mul(2.2), 0.0, 1.0)
+      const ramp = valley.add(slope.sub(valley).mul(f1))
+      const ramp2 = ramp.add(peak.sub(ramp).mul(f2))
+      const brightness = uniforms.rms
+        .mul(0.3)
+        .add(uniforms.beat.mul(0.3))
+        .add(uniforms.high.mul(0.2))
+        .add(0.7)
+      return ramp2.mul(brightness)
+    })()
+
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.rotation.x = -0.55
+    mesh.position.z = -2
+
+    scene.add(mesh)
+
+    return {
+      dispose: () => {
+        scene.remove(mesh)
+        geometry.dispose()
+        material.dispose()
+      },
+    }
+  },
+}
+
+// ─── Preset: Fractal Noise ────────────────────────────────────────────────────
+
+/** Počet iterací Julia množiny (unrolled — TSL bez smyček). */
+const FRACTAL_ITER = 10
+
+/**
+ * Animovaná Julia množina — z = z² + c s pomalu driftujícím `c` (audioTime),
+ * beat „zoom" (pulzující měřítko), barva podle úniku iterace + audio. `low`
+ * dotahuje zoom, `high` přidává jas. Plně fragment shader (full-screen plane).
+ */
+export const fractalNoise: ModernPreset = {
+  id: 'fractal-noise',
+  name: 'Fractal Noise',
+  description: 'Animovaná Julia fraktál s beat zoomem',
+  setup(scene, uniforms) {
+    const geometry = new THREE.PlaneGeometry(20, 12)
+    const material = new MeshBasicNodeMaterial({ side: THREE.DoubleSide })
+
+    material.colorNode = Fn(() => {
+      // Centered UV s aspect korekcí (16:9).
+      const uv = screenUV.sub(vec2(0.5, 0.5)).mul(2.0)
+      const aspectU = vec2(uv.x.mul(1.778), uv.y)
+      const t = uniforms.audioTime
+
+      // Beat + low „zoom": větší zoom = menší měřítko souřadnic = přiblížení.
+      const zoom = uniforms.beat.mul(0.6).add(uniforms.low.mul(0.4)).add(1.0)
+      const z0 = aspectU.mul(float(1.5)).div(zoom)
+
+      // Driftující c — drží se v zajímavé oblasti Julia množiny (~ -0.4, 0.59).
+      const cx = sin(t.mul(0.13)).mul(0.2).add(-0.4)
+      const cy = cos(t.mul(0.11)).mul(0.2).add(0.59)
+
+      // Unrolled iterace z = z² + c (TSL nemá smyčky → JS for staví graf).
+      let zx = z0.x
+      let zy = z0.y
+      for (let i = 0; i < FRACTAL_ITER; i++) {
+        const zx2 = zx.mul(zx).sub(zy.mul(zy)).add(cx)
+        const zy2 = zx.mul(zy).mul(2.0).add(cy)
+        zx = zx2
+        zy = zy2
+      }
+
+      const m = length(vec2(zx, zy))
+      const shade = clamp(m.mul(0.25), 0.0, 1.0)
+      const band = fract(m.mul(0.15).sub(t.mul(0.05)))
+
+      // Ruční lerp místo mix() — mix() nebere konkrétní float faktor
+      // (band/shade jdou z length/fract/clamp). Čistá vec3 aritmetika.
+      const c1 = vec3(0.04, 0.09, 0.35)
+      const c2 = vec3(0.6, 0.15, 0.9)
+      const c3 = vec3(1.0, 0.7, 0.25)
+      const ramp = c1.add(c2.sub(c1).mul(band))
+      const ramp2 = ramp.add(c3.sub(ramp).mul(shade))
+
+      const brightness = uniforms.rms
+        .mul(0.3)
+        .add(uniforms.beat.mul(0.4))
+        .add(uniforms.high.mul(0.3))
+        .add(0.6)
+      return ramp2.mul(brightness)
+    })()
+
+    const plane = new THREE.Mesh(geometry, material)
+    scene.add(plane)
+
+    return {
+      dispose: () => {
+        scene.remove(plane)
+        geometry.dispose()
+        material.dispose()
+      },
+    }
+  },
+}
+
 // ─── Registry všech presetů ──────────────────────────────────────────────────
 
 export const MODERN_PRESETS: ModernPreset[] = [
@@ -578,6 +729,8 @@ export const MODERN_PRESETS: ModernPreset[] = [
   waveField,
   plasma,
   tunnel,
+  terrainMesh,
+  fractalNoise,
 ]
 
 export function getPresetById(id: string): ModernPreset | undefined {

@@ -139,8 +139,8 @@ S = malá změna (~1 h), M = středně velká (~2–3 h), L = velká (~5+ h).
 | 4.11 | PWA install prompt UI — vlastní tlačítko „Nainstaluj na plochu" místo browser default ✅ done | S |
 | 4.12 | Titulek/credits screen volitelně — 3 s intro „Track: X by Y" + outro „Made with DJ Enda" před exportem ✅ done | M |
 | 4.13 | Watermark volitelný — polopropustné logo v rohu pro brandování ✅ done | S |
-| 4.14 | Modern preset Terrain Mesh (vertex displacement na ploché ploše, audio-driven height map) | M |
-| 4.15 | Modern preset Fractal Noise (mandelbrot/julia-like iterace, beat zoom) | M |
+| 4.14 | Modern preset Terrain Mesh (vertex displacement na ploché ploše, audio-driven height map) ✅ done | M |
+| 4.15 | Modern preset Fractal Noise (mandelbrot/julia-like iterace, beat zoom) ✅ done | M |
 
 ---
 

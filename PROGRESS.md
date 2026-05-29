@@ -8,9 +8,10 @@ dokončeném bodě z `ROADMAP.md`.
 **Aktuální bod:** Žádný otevřený. Fáze 1–5 hotové a na produkci.
 
 **HAND-OFF pro nový chat:**
-- Všechny plánované fáze (1–5) hotové. Další práce = nová fáze nebo backlog.
-- Volitelný backlog: **4.14** Modern preset Terrain Mesh, **4.15** Fractal Noise,
-  **2.5d** Classic export do Web Workeru, nahrát 3 showcase MP4 do
+- Všechny plánované fáze (1–5) hotové + backlog presety 4.14/4.15 (Modern má 8).
+- Zbývající volitelný backlog: **2.5d** Classic export do Web Workeru (nízká
+  hodnota — Butterchurn potřebuje real-time AudioContext, ve workeru není →
+  doporučeno vynechat), nahrát 3 showcase MP4 do
   `public/showcase/{classic,modern,ai}.mp4` (Hero je použije bez code změn).
 - Workflow: před push `npx tsc -b`; commit/push dělá Jenda lokálně (Cowork
   sandbox neumí psát do `.git` — index.lock „Operation not permitted").
@@ -24,6 +25,23 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Backlog 4.14 + 4.15 — dva nové Modern presety (Modern má teď 8 efektů):**
+  - **4.14 Terrain Mesh** — vertex displacement na jemně dělené `PlaneGeometry`
+    (180×120 segmentů), nakloněné (`rotation.x −0.55`, `position.z −2`; rozměry
+    zvolené tak, aby ani špičky hřebenů neprošly za fixní kameru z=3 → žádný
+    clipping). Sdílená `heightField()` (ridged sin vrstvy, scroll z
+    `audioTime × mid`) pro positionNode i colorNode (barva podle elevace).
+    low → výška, beat → pulse, rms/high → jas.
+  - **4.15 Fractal Noise** — fragment preset (full-screen plane), animovaná
+    Julia množina `z = z² + c`, `c` driftuje z audioTime, **10 unrolled iterací**
+    (TSL nemá smyčky → JS `for` staví node graf), beat+low „zoom", barva podle
+    úniku iterace + audio.
+  - **TSL lesson (důležité):** `mix()` v těchhle three typings **nebere konkrétní
+    `float` faktor** (z `clamp`/`fract`/`length`) — projde jen `any` z uniformů.
+    Řešeno **ručním lerpem** `a.add(b.sub(a).mul(f))` + paleta přes `vec3()`
+    (ne `color()`). Stejná rodina problému jako Tunnel TSL overload fix.
+  - `npx tsc -b` exit 0, ESLint čistý. Ověřeno v prohlížeči.
 
 - **Fáze 5 Round 4 — 5.12 Comparison mode (Classic vs Modern):**
   - **`src/components/ComparisonView.tsx`** (nový, samostatný — nesahá do
