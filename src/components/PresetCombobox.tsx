@@ -17,6 +17,14 @@ interface PresetComboboxProps {
   favorites?: Set<string>
   /** Callback pro toggle oblíbený / neoblíbený. */
   onToggleFavorite?: (key: string) => void
+  /** Mapa presetKey → blob URL náhledu. Pokud poskytnuta, řádky mají miniaturu. */
+  thumbnails?: Map<string, string>
+  /** True, dokud běží generování náhledů (ukáže progress v dropdownu). */
+  thumbnailsGenerating?: boolean
+  /** Počet hotových náhledů (pro progress text). */
+  thumbnailsDone?: number
+  /** Celkový počet náhledů (pro progress text). */
+  thumbnailsTotal?: number
 }
 
 /**
@@ -52,6 +60,10 @@ export const PresetCombobox = forwardRef<PresetComboboxHandle, PresetComboboxPro
     placeholder = 'Hledat preset…',
     favorites,
     onToggleFavorite,
+    thumbnails,
+    thumbnailsGenerating = false,
+    thumbnailsDone = 0,
+    thumbnailsTotal = 0,
   },
   ref,
 ) {
@@ -224,6 +236,7 @@ export const PresetCombobox = forwardRef<PresetComboboxHandle, PresetComboboxPro
                     const isHighlighted = idx === highlightedIdx
                     const isSelected = opt === value
                     const isFav = favorites?.has(opt) ?? false
+                    const thumbUrl = thumbnails?.get(opt)
                     return (
                       <li
                         key={opt}
@@ -242,6 +255,20 @@ export const PresetCombobox = forwardRef<PresetComboboxHandle, PresetComboboxPro
                         ].join(' ')}
                         title={opt}
                       >
+                        {thumbnails && (
+                          <span className="shrink-0 w-12 h-7 rounded overflow-hidden bg-neutral-800 border border-neutral-700/60 flex items-center justify-center">
+                            {thumbUrl ? (
+                              <img
+                                src={thumbUrl}
+                                alt=""
+                                loading="lazy"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="block w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-700 animate-pulse" />
+                            )}
+                          </span>
+                        )}
                         <span className="flex-1 min-w-0 truncate">{opt}</span>
                         {onToggleFavorite && (
                           <button
@@ -273,6 +300,12 @@ export const PresetCombobox = forwardRef<PresetComboboxHandle, PresetComboboxPro
                 </div>
               )
             })
+          )}
+          {thumbnailsGenerating && (
+            <li className="sticky bottom-0 z-10 flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-400 bg-neutral-900/95 border-t border-neutral-800">
+              <span className="inline-block w-3 h-3 rounded-full border-2 border-neutral-600 border-t-purple-400 animate-spin" />
+              Generuji náhledy… {thumbnailsDone}/{thumbnailsTotal}
+            </li>
           )}
         </ul>
       )}

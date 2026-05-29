@@ -11,6 +11,7 @@ import butterchurnPresets from 'butterchurn-presets'
 import type { Visualizer as ButterchurnVisualizer } from '@webamp/butterchurn'
 import { PresetCombobox, type PresetComboboxHandle } from './PresetCombobox'
 import { useFavorites } from '../lib/favorites'
+import { usePresetThumbnails } from '../lib/usePresetThumbnails'
 import type { VisualizerHandle } from '../types/visualizerHandle'
 
 interface VisualizerProps {
@@ -74,6 +75,18 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
 
   // Oblíbené presety Classic — perzistované v localStorage.
   const { favorites, toggle: toggleFavorite } = useFavorites('classic')
+
+  // Náhledy presetů (Fáze 5.13) — cache v IndexedDB + background generování.
+  // Pauza generování když hraje audio, ať nebereme GPU živému vizualizéru.
+  const {
+    thumbnails,
+    generated: thumbsDone,
+    total: thumbsTotal,
+    generating: thumbsGenerating,
+    regenerate: regenerateThumbs,
+  } = usePresetThumbnails(presetOptions, ALL_PRESETS, {
+    paused: status === 'playing',
+  })
 
   // Cleanup při unmountu nebo změně audioBuffer (jiný soubor).
   useEffect(() => {
@@ -455,6 +468,10 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
           onChange={changePreset}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
+          thumbnails={thumbnails}
+          thumbnailsGenerating={thumbsGenerating}
+          thumbnailsDone={thumbsDone}
+          thumbnailsTotal={thumbsTotal}
           className="flex-1 min-w-0"
         />
 
@@ -477,6 +494,22 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
             aria-label="Hlasitost"
           />
         </div>
+      </div>
+
+      {/* Náhledy presetů (Fáze 5.13) — progress během generování, jinak
+          tlačítko přegenerovat. Decentní, zarovnané vpravo. */}
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={regenerateThumbs}
+          disabled={thumbsGenerating}
+          className="text-[11px] text-neutral-500 hover:text-neutral-300 disabled:opacity-50 disabled:cursor-default transition-colors"
+          title="Smaže cache náhledů a vygeneruje je znovu"
+        >
+          {thumbsGenerating
+            ? `Generuji náhledy… ${thumbsDone}/${thumbsTotal}`
+            : '↻ Přegenerovat náhledy'}
+        </button>
       </div>
 
       {error && (

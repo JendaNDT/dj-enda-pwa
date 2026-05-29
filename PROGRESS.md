@@ -4,26 +4,19 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-29
-**Aktuální fáze:** Fáze 5 — Round 1–3 hotové (9 z 13 bodů done, 4 zbývají
-v Round 4)
-**Aktuální bod:** 5.1–5.11 hotové. Round 3 čeká na commit + push (předchozí
-roundy 1–2 už na produkci).
+**Aktuální fáze:** Fáze 5 — 12 z 13 bodů done, zbývá poslední bod 5.12
+**Aktuální bod:** 5.1–5.11 + 5.13 hotové a na produkci. Round 3 (5.10–5.11)
+i Round 4 bod 5.13 commitnuté + pushnuté. Zbývá už jen **5.12 Comparison mode**.
 
 **HAND-OFF pro nový chat:**
-1. **Commit + push Round 3 NEZAPOMENOUT** — změny v App.tsx, Hero.tsx (nový),
-   ThreeVisualizer.tsx, Visualizer.tsx, public/showcase/.gitkeep, PROGRESS.md,
-   ROADMAP.md. Konkrétní commit zpráva je v posledním ChatGPT/Claude message.
-2. **Otestovat na produkci** Round 1–3 — hlavně Classic live preview (silent
-   oscillator), Hero placeholders, toast notifikace, Pokročilé nastavení
-   collapse, onboarding bubble (vyžaduje smazat `dj-enda:onboarding-seen`
-   z localStorage v DevTools pro re-test).
-3. **Nahrát 3 showcase MP4** (volitelné ale doporučené):
+1. **5.12 Comparison mode (L)** — poslední bod Fáze 5. 3 vizualizéry vedle sebe
+   se sdíleným audio zdrojem. Plán v ROADMAP.md. Největší risk bodu = shared
+   audio source refactor pro Classic/Modern/AI najednou (dnes má každý vlastní
+   AudioContext). Po 5.12 je Fáze 5 hotová.
+2. **Nahrát 3 showcase MP4** (volitelné ale doporučené):
    - Vyrobit krátké (~10s) ukázky v Classic / Modern / AI módu, 720p
    - Uložit jako `public/showcase/classic.mp4`, `modern.mp4`, `ai.mp4`
    - Hero je automaticky použije bez code změn (smart fallback)
-4. **Round 4** — 5.12 Comparison mode (L) + 5.13 Preset thumbnails (L).
-   Plán už je v ROADMAP.md. Doporučuju **5.13 nejdřív** (samostatnější,
-   menší risk), pak 5.12 (shared audio source refactor).
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává
@@ -34,6 +27,37 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 5 Round 4 — 5.13 Preset náhledy (thumbnails):**
+  - **`src/lib/presetThumbnails.ts`** — samostatná IndexedDB databáze
+    `dj-enda-thumbs` (NEsdílí store s `aiCache.ts`, aby se nemusela koordinovat
+    DB verze — to byl důvod proč 5.13 dřív než 5.12). Helpery `getAllThumbnails`
+    / `putThumbnail` / `clearThumbnailCache`. Generátor
+    `createThumbnailGenerator()`: skrytý 192×108 butterchurn canvas + vlastní
+    AudioContext + tichý oscilátor (connectAudio + `resume()` pokus pro
+    audio-reaktivní náhled). `capture(preset)` = `loadPreset(0)` → 14 warm framů
+    (16 ms rozestup, ať se animace pohne) → finální `render()` + **synchronní
+    `drawImage` do 2D canvasu** (WebGL drawing buffer se po composit fázi
+    vyčistí, kopie musí být ve stejném synchronním turnu) → JPEG q0.72 blob.
+  - **`src/lib/usePresetThumbnails.ts`** — hook: na mount načte cache →
+    okamžité náhledy (`Map<key, blobURL>`), dopočítá chybějící a generuje je
+    sekvenčně na pozadí (INITIAL_DELAY 800 ms, 40 ms mezi presety). Token-based
+    cancel (cleanup / regenerate), **pauza když `paused`** (audio hraje, ať
+    nebereme GPU živému vizualizéru). Revoke blob URL na unmount i při
+    regenerate. Vrací `thumbnails`, `generated`/`total`, `generating`,
+    `regenerate()`.
+  - **`PresetCombobox.tsx`** — volitelné props `thumbnails` +
+    `thumbnailsGenerating/Done/Total`. Každý řádek má miniaturu vlevo (img /
+    pulse placeholder, než doběhne). Sticky progress řádek „Generuji náhledy
+    N/150" v dropdownu. Props volitelné → ostatní použití comboboxu beze změny.
+  - **`Visualizer.tsx`** — `usePresetThumbnails(presetOptions, ALL_PRESETS,
+    { paused: status === 'playing' })`, props předané do comboboxu, decentní
+    tlačítko „↻ Přegenerovat náhledy" (dual-purpose: za běhu ukazuje progress).
+  - `npx tsc -b` exit 0, ESLint na nových souborech čistý. Ověřeno v prohlížeči
+    (náhledy se plní postupně, po reloadu hned z cache, pauza za přehrávání).
+  - **Známá limitace:** presety bez audio energie můžou být tmavší (mitigace:
+    `resume()` na tichý oscilátor → mírná reaktivita). Vite build v Cowork
+    sandboxu nejde (linux-arm64 rolldown binding chybí) — gate je `tsc -b`.
 
 - **Fáze 5 Round 3** — Hero & live preview:
   - **5.11 Live preview hned po uploadu:**
