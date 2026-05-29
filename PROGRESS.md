@@ -28,6 +28,17 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 ## Co je hotové
 
+- **Stability audit (2026-05-29):** Vercel deploy READY, build 11s (jen perf
+  varování — main chunk 2.44 MB / 619 kB gzip + INEFFECTIVE_DYNAMIC_IMPORT u three).
+  Živý test přes Chrome MCP napříč módy (Classic / Modern / Srovnání / AI), vč.
+  WebGPU→WebGL2 fallbacku: **0 runtime chyb** (error hook v page kontextu).
+  Opraveno: podtitulek + tooltip Modern „6 → 8 efektů" (+ Terrain Mesh, Fractal
+  Noise) v `App.tsx`; ESLint nově ignoruje `dev-dist/` (hlášení 28 → 15, zbytek
+  pre-existing react-hooks v7 / TSL `any`). **Deferred backlog (ne-blokující):**
+  export `BufferTarget` drží celé MP4 v RAM (risk u dlouhého 1440p → budoucí OPFS
+  stream), AI shader „MIRROR THIS" duplikace `AiVisualizer`↔`export.ts`, drobná
+  lint hygiena (irregular whitespace `audio.ts:96`, chybí `cause` `hfClient.ts:214`).
+
 - **Fáze 6 — Classic ladicí parametry (Butterchurn):**
   - **`src/lib/classicControls.ts`** — `useClassicControls()` hook se stavem
     (blendSeconds, meshLevel, sharpness, antialias, autoCycle, cycleSeconds) +

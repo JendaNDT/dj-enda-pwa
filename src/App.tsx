@@ -385,7 +385,7 @@ function App() {
                       <button
                         type="button"
                         onClick={() => setVisualizerMode('modern')}
-                        title="Vlastní WebGPU shadery (Three.js TSL), 6 efektů"
+                        title="Vlastní WebGPU shadery (Three.js TSL), 8 efektů"
                         className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
                           visualizerMode === 'modern'
                             ? 'bg-purple-600 text-white'
@@ -423,7 +423,7 @@ function App() {
                       {visualizerMode === 'classic' &&
                         'Klasické Milkdrop presety — ~150 efektů, esteticky preferované, real-time export.'}
                       {visualizerMode === 'modern' &&
-                        'Vlastní WebGPU shadery — 6 efektů (Sphere, Particles, Kaleidoscope, Wave, Plasma, Tunnel), 3-5× rychlejší export.'}
+                        'Vlastní WebGPU shadery — 8 efektů (Sphere, Particles, Kaleidoscope, Wave, Plasma, Tunnel, Terrain Mesh, Fractal Noise), 3-5× rychlejší export.'}
                       {visualizerMode === 'ai' &&
                         'AI obrazy z HuggingFace (Flux) + shader crossfade. Vyžaduje HF token. Filmově vypadající výstup.'}
                       {visualizerMode === 'comparison' &&
