@@ -3,15 +3,27 @@
 Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
-**Poslední aktualizace:** 2026-05-28
-**Aktuální fáze:** Fáze 5 — Round 1–3 hotové
-**Aktuální bod:** 5.1–5.11 hotové. Hero showcase s 3 kartami (placeholder
-nebo `/showcase/{kind}.mp4` když existuje), live preview po uploadu pro
-Classic + Modern (decay uniforms / silent oscillator). `tsc -b` exit 0.
-**Příští krok:** **Round 4 — ambiciózní features** (5.12 Comparison mode,
-5.13 preset thumbnails). Každý samostatná session. Plus **nahrát 3 showcase
-MP4** do `public/showcase/{classic,modern,ai}.mp4` (volitelné, fallback
-placeholder funguje hned). Před tím commit + push Round 3.
+**Poslední aktualizace:** 2026-05-29
+**Aktuální fáze:** Fáze 5 — Round 1–3 hotové (9 z 13 bodů done, 4 zbývají
+v Round 4)
+**Aktuální bod:** 5.1–5.11 hotové. Round 3 čeká na commit + push (předchozí
+roundy 1–2 už na produkci).
+
+**HAND-OFF pro nový chat:**
+1. **Commit + push Round 3 NEZAPOMENOUT** — změny v App.tsx, Hero.tsx (nový),
+   ThreeVisualizer.tsx, Visualizer.tsx, public/showcase/.gitkeep, PROGRESS.md,
+   ROADMAP.md. Konkrétní commit zpráva je v posledním ChatGPT/Claude message.
+2. **Otestovat na produkci** Round 1–3 — hlavně Classic live preview (silent
+   oscillator), Hero placeholders, toast notifikace, Pokročilé nastavení
+   collapse, onboarding bubble (vyžaduje smazat `dj-enda:onboarding-seen`
+   z localStorage v DevTools pro re-test).
+3. **Nahrát 3 showcase MP4** (volitelné ale doporučené):
+   - Vyrobit krátké (~10s) ukázky v Classic / Modern / AI módu, 720p
+   - Uložit jako `public/showcase/classic.mp4`, `modern.mp4`, `ai.mp4`
+   - Hero je automaticky použije bez code změn (smart fallback)
+4. **Round 4** — 5.12 Comparison mode (L) + 5.13 Preset thumbnails (L).
+   Plán už je v ROADMAP.md. Doporučuju **5.13 nejdřív** (samostatnější,
+   menší risk), pak 5.12 (shared audio source refactor).
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
 image-to-video API. Aplikace zůstává plně zdarma.
 **Strategie:** **Permanentní coexistence.** Butterchurn (Classic) zůstává

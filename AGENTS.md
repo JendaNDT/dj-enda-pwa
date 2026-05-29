@@ -202,6 +202,28 @@ příští session zase trefila. Formát: krátký bullet point + datum.
   (žádný shader compile error v konzoli, jen default material behavior).
   Důkaz: `node_modules/three/examples/jsm/modifiers/CurveModifierGPU.js`.
   Vzor: `material.positionNode = Fn(() => { return positionLocal.add(...) })()`.
+- **2026-05-29** — **Live preview pattern (Fáze 5.11):** Classic Butterchurn
+  potřebuje běžící AudioNode pro `connectAudio()`. Pro idle preview (než
+  uživatel klikne „Spustit") použít **silent oscillator** + GainNode(0) →
+  destination, plus oscillator → Butterchurn analyser. Chrome autoplay
+  policy: AudioContext po `new AudioContext()` může být `suspended` —
+  resume až při prvním user gesture (`pointerdown` listener). Butterchurn
+  render() v `requestAnimationFrame` funguje i v suspended stavu, jen
+  vidí nulové frekvenční amplitudy → preset má vlastní time-based motion,
+  takže se hýbe „klidně" ale viditelně. `start()` poté **swapne oscillator
+  za reálný `AudioBufferSourceNode`** přes `visualizer.connectAudio(source)`
+  — žádný teardown AudioContextu / vizualizéru. Modern (`ThreeVisualizer.tsx`)
+  to má jednodušší: render loop běží od setup a uniformy decay-ují
+  k nule (× 0.92 per frame).
+- **2026-05-29** — **2D compositor pipeline pro export overlay** (Fáze 4.12/4.13):
+  WebGL (Butterchurn) ani WebGPU (Three.js) canvasy nepodporují `drawText`,
+  `fillRect` nebo `drawImage` nativně. Pro overlay (watermark, intro/outro
+  titulky) je nutný **secondary OffscreenCanvas s 2D context**. Pipeline:
+  vizualizér renderuje do `vizCanvas`, compositor `canvas` (2D) drawImage
+  z vizCanvas + drawText overlay, Mediabunny `CanvasSource` dostává
+  compositor canvas. Audio padding pro intro/outro silence přes
+  `padAudioBufferWithSilence()` (silence framy do nového bufferu).
+  Implementace v `src/lib/exportCompositor.ts`.
 - **2026-05-29** — **TSL `vec3(a, a, a)` může selhat na `tsc -b` strict overload
   resolution** i když `tsc --noEmit` projde. Symptom: `error TS2769: No overload
   matches this call. Argument of type 'Node<"vec3">' is not assignable to
