@@ -114,9 +114,16 @@ export function ExportButton({
   const comboSupported = (rid: string, f: number) =>
     supportedCombos === null || supportedCombos.has(`${rid}-${f}`)
 
-  // Feature-detect Web Share API s File support.
-  const canShare =
+  // Web Share souborů funguje spolehlivě jen na mobilu/tabletu. Na desktopu
+  // (hlavně macOS Chrome) navigator.share vrátí success, ale systémový share
+  // sheet se nezobrazí — proto tlačítko ukazujeme jen na dotykových zařízeních.
+  // iPadOS se hlásí jako „Macintosh", proto navíc test maxTouchPoints.
+  const isTouchDevice =
     typeof navigator !== 'undefined' &&
+    (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)))
+  const canShare =
+    isTouchDevice &&
     typeof navigator.share === 'function' &&
     typeof navigator.canShare === 'function'
 
@@ -351,43 +358,25 @@ export function ExportButton({
   }
 
   const shareResult = async () => {
-    // DOČASNÁ DIAGNOSTIKA sdílení — odstranit po vyřešení.
-    console.log('[DJ share] klik. blob=', resultBlobRef.current?.size, 'typeof share=', typeof navigator.share, 'typeof canShare=', typeof navigator.canShare)
     const blob = resultBlobRef.current
     if (!blob) {
-      console.warn('[DJ share] resultBlobRef je null → konec')
       showToast('Video není připravené ke sdílení.', 'error')
-      return
-    }
-    if (typeof navigator.share !== 'function') {
-      console.warn('[DJ share] navigator.share není funkce → konec')
-      showToast('Tento prohlížeč neumí sdílet. Video je uložené na disku.', 'info', 6000)
       return
     }
     const file = new File([blob], filename, { type: 'video/mp4' })
     // Jen title + files — kombinace text + files dělá na některých share
     // targetech problém, takže text vynecháváme.
     const shareData: ShareData = { files: [file], title: filename }
-    console.log('[DJ share] file=', file.size, file.name, '| canShare(data)=', typeof navigator.canShare === 'function' ? navigator.canShare(shareData) : 'no-canShare')
     if (typeof navigator.canShare === 'function' && !navigator.canShare(shareData)) {
-      console.warn('[DJ share] canShare(data) = false → konec')
-      showToast(
-        'Tento prohlížeč neumí sdílet video soubor. Použij stažený soubor nebo „Otevřít video".',
-        'info',
-        6000,
-      )
+      showToast('Tento prohlížeč neumí sdílet video soubor.', 'info', 5000)
       return
     }
-    // Okamžitá viditelná zpětná vazba — klik nikdy „nemlčí". Zmizí, jakmile se
-    // share dialog otevře / dokončí / zruší.
+    // Okamžitá viditelná zpětná vazba — klik nikdy „nemlčí".
     const pendingId = showToast('Otevírám sdílení…', 'info', 0)
-    console.log('[DJ share] volám navigator.share()…')
     try {
       await navigator.share(shareData)
-      console.log('[DJ share] navigator.share() RESOLVED ok')
       dismissToast(pendingId)
     } catch (e) {
-      console.error('[DJ share] navigator.share() REJECTED:', e instanceof Error ? e.name : e, e instanceof Error ? e.message : '')
       dismissToast(pendingId)
       // AbortError = uživatel sdílení zrušil — hlásíme neutrálně, ne jako chybu.
       if (e instanceof DOMException && e.name === 'AbortError') {

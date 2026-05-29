@@ -28,6 +28,14 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 ## Co je hotové
 
+- **Sdílení — finální řešení (2026-05-29):** Root cause nalezen přes konzoli na
+  Jendově Macu: `navigator.share({files})` vrací success (`RESOLVED`), ale na
+  **desktop macOS Chrome se share sheet nezobrazí** (canShare true, blob 371 MB,
+  přesto žádné okno — známý Chromium issue, ne bug appky). Řešení: tlačítko
+  „Sdílet" se ukazuje **jen na dotykových zařízeních** (`isTouchDevice` v
+  `ExportButton.tsx`); na desktopu zůstává uložený soubor + „Otevřít video".
+  Dočasné diagnostické `[DJ share]` logy odstraněny. `tsc -b` 0, lint beze změny.
+
 - **Sdílení exportu — error surfacing (2026-05-29):** „Sdílet" tiše spolykalo
   chyby (`catch {}`), takže klik vypadal jako že nic nedělá. Ověřeno živě přes
   Chrome, že **Web Share se souborem na Jendově Macu funguje** (`navigator.share`

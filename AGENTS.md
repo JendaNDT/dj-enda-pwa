@@ -303,6 +303,17 @@ příští session zase trefila. Formát: krátký bullet point + datum.
   → toast „Obnovit" (reload až na klik, `updateSW(true)`), `devOptions.enabled:
   false`. Toast systém (`toast.ts`) rozšířen o volitelný `action` (label+onClick).
 
+- **2026-05-29** — **Web Share API se soubory je na desktop macOS Chrome
+  half-broken:** `canShare({files})` vrátí `true` a `navigator.share()` se
+  vyřeší úspěšně (`RESOLVED`), ale **systémový share sheet se NEzobrazí** (ověřeno
+  v konzoli na Jendově Macu: blob 371 MB, canShare true, share RESOLVED, žádné
+  okno; známý Chromium issue). Z kódu se to nedá detekovat (vrací success) ani
+  obejít. Řešení: tlačítko „Sdílet" zobrazovat jen na **dotykových zařízeních**
+  (`isTouchDevice` = UA test + `maxTouchPoints > 1` kvůli iPadOS hlásícímu se jako
+  „Macintosh"), na desktopu spoléhat na uložený soubor + „Otevřít video". Web
+  Share souborů je prakticky mobilní feature. Diagnostika: dočasné `console.log`
+  v handleru + uživatel zkopíruje konzoli — spolehlivější než vzdálená automatizace.
+
 ---
 
 ## 8. Reference
