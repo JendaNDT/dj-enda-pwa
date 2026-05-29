@@ -9,6 +9,7 @@ declare module '@webamp/butterchurn' {
     textureRatio?: number
     meshWidth?: number
     meshHeight?: number
+    outputFXAA?: boolean
   }
 
   export interface Visualizer {
@@ -16,6 +17,10 @@ declare module '@webamp/butterchurn' {
     disconnectAudio(node: AudioNode): void
     loadPreset(preset: unknown, blendTime?: number): void
     setRendererSize(width: number, height: number): void
+    /** Změní rozlišení warp mřížky za běhu (jemnost deformací). */
+    setInternalMeshSize(width: number, height: number): void
+    /** Zapne/vypne FXAA vyhlazení hran za běhu. */
+    setOutputAA(enabled: boolean): void
     render(): void
   }
 

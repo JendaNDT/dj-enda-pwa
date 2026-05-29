@@ -4,15 +4,16 @@ Snapshot stavu projektu pro hand-off mezi sessions. Aktualizovat po každém
 dokončeném bodě z `ROADMAP.md`.
 
 **Poslední aktualizace:** 2026-05-29
-**Aktuální fáze:** Fáze 5 — ✅ KOMPLETNÍ (13/13 bodů, vše na produkci)
-**Aktuální bod:** Žádný otevřený. Fáze 1–5 hotové a na produkci.
+**Aktuální fáze:** Fáze 6 — Classic ovládání ✅ done (Fáze 1–5 + presety 4.14/4.15 hotové)
+**Aktuální bod:** Žádný otevřený. Vše na produkci.
 
 **HAND-OFF pro nový chat:**
-- Všechny plánované fáze (1–5) hotové + backlog presety 4.14/4.15 (Modern má 8).
-- Zbývající volitelný backlog: **2.5d** Classic export do Web Workeru (nízká
-  hodnota — Butterchurn potřebuje real-time AudioContext, ve workeru není →
-  doporučeno vynechat), nahrát 3 showcase MP4 do
-  `public/showcase/{classic,modern,ai}.mp4` (Hero je použije bez code změn).
+- Fáze 1–5 + backlog presety 4.14/4.15 + Fáze 6 (Classic ladicí parametry) hotové,
+  vše na produkci. Modern má 8 presetů.
+- Zbývající volitelný backlog: **2.5d** Classic export do Web Workeru (doporučeno
+  vynechat — Butterchurn potřebuje real-time AudioContext, ve workeru není), nahrát
+  3 showcase MP4 do `public/showcase/{classic,modern,ai}.mp4`, případně **per-preset
+  parametry pro Modern** (uniformy → posuvníky) — zatím neimplementováno.
 - Workflow: před push `npx tsc -b`; commit/push dělá Jenda lokálně (Cowork
   sandbox neumí psát do `.git` — index.lock „Operation not permitted").
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
@@ -25,6 +26,27 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 ---
 
 ## Co je hotové
+
+- **Fáze 6 — Classic ladicí parametry (Butterchurn):**
+  - **`src/lib/classicControls.ts`** — `useClassicControls()` hook se stavem
+    (blendSeconds, meshLevel, sharpness, antialias, autoCycle, cycleSeconds) +
+    localStorage perzistence (`dj-enda:classic-controls`), konstanty MESH_SIZES /
+    MESH_LABELS / TEXTURE_RATIOS / SHARPNESS_LABELS, `countActive()` pro badge.
+  - **`src/types/butterchurn.d.ts`** — přidány `setInternalMeshSize(w,h)`,
+    `setOutputAA(bool)` a `outputFXAA?` do options (ověřeno v source balíčku 3.0.0-beta.5).
+  - **`Visualizer.tsx`** — sbalitelný panel „Nastavení vizualizéru":
+    * **Auto-cyklení** presetů (časovač → náhodný preset, interval slider).
+    * **Doba přechodu** (blend) — čte se z `controlsRef` v `changePreset`.
+    * **Detail mřížky** — živě `setInternalMeshSize`.
+    * **Anti-aliasing** — živě `setOutputAA`.
+    * **Ostrost** (textureRatio) — nemá live setter → `rebuildVisualizer()`
+      (nový Butterchurn na stejném canvasu+ctx, reconnect aktuální audio node,
+      reload preset). **Render loop refactorován na `visualizerRef.current?.render()`**,
+      aby swap při rebuildu nepřerušil rendering.
+    * Badge „N aktivní" + reset na defaulty.
+  - **Pozn.:** Butterchurn presety samotné ladit nejdou (Milkdrop rovnice
+    zapečené) — tohle jsou globální render/behavior knoby, ne parametry efektu.
+  - `npx tsc -b` exit 0, ESLint bez nových chyb. Ověřeno v prohlížeči.
 
 - **Backlog 4.14 + 4.15 — dva nové Modern presety (Modern má teď 8 efektů):**
   - **4.14 Terrain Mesh** — vertex displacement na jemně dělené `PlaneGeometry`

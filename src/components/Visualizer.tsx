@@ -12,6 +12,14 @@ import type { Visualizer as ButterchurnVisualizer } from '@webamp/butterchurn'
 import { PresetCombobox, type PresetComboboxHandle } from './PresetCombobox'
 import { useFavorites } from '../lib/favorites'
 import { usePresetThumbnails } from '../lib/usePresetThumbnails'
+import {
+  useClassicControls,
+  countActive,
+  MESH_SIZES,
+  MESH_LABELS,
+  TEXTURE_RATIOS,
+  SHARPNESS_LABELS,
+} from '../lib/classicControls'
 import type { VisualizerHandle } from '../types/visualizerHandle'
 
 interface VisualizerProps {
@@ -29,7 +37,6 @@ type PlaybackStatus = 'idle' | 'playing' | 'paused' | 'ended'
 
 const CANVAS_WIDTH = 640
 const CANVAS_HEIGHT = 360
-const PRESET_BLEND_SECONDS = 2
 
 // Načte presety jen jednou na úrovni modulu — knihovna jich má cca 150 a getPresets()
 // vrací stejný objekt při každém volání.
@@ -88,6 +95,55 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
     paused: status === 'playing',
   })
 
+  // Ladicí parametry Classic vizualizéru (Fáze 6) — perzistované v localStorage.
+  const { controls, update: updateControls, reset: resetControls } = useClassicControls()
+  const [controlsOpen, setControlsOpen] = useState(false)
+  // Zrcadla pro použití v imperativních callbacích / timerech bez stale closure.
+  const controlsRef = useRef(controls)
+  const currentPresetRef = useRef(currentPreset)
+  useEffect(() => {
+    controlsRef.current = controls
+  }, [controls])
+  useEffect(() => {
+    currentPresetRef.current = currentPreset
+  }, [currentPreset])
+
+  // Sestaví create opts pro Butterchurn z aktuálních controls.
+  const buildVisualizerOptions = () => {
+    const c = controlsRef.current
+    const mesh = MESH_SIZES[c.meshLevel] ?? MESH_SIZES[1]
+    return {
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      pixelRatio: window.devicePixelRatio || 1,
+      textureRatio: TEXTURE_RATIOS[c.sharpness] ?? 1,
+      meshWidth: mesh[0],
+      meshHeight: mesh[1],
+      outputFXAA: c.antialias,
+    }
+  }
+
+  // Znovu vytvoří Butterchurn vizualizér na stejném canvasu + AudioContextu
+  // (jediná cesta jak změnit textureRatio = ostrost — nemá live setter).
+  // Render loop čte visualizerRef.current, takže swap se projeví bez přerušení.
+  const rebuildVisualizer = () => {
+    const canvas = canvasRef.current
+    const audioCtx = audioCtxRef.current
+    if (!canvas || !audioCtx) return
+    try {
+      const next = butterchurn.createVisualizer(audioCtx, canvas, buildVisualizerOptions())
+      const node = sourceRef.current ?? idleOscillatorRef.current
+      if (node) next.connectAudio(node)
+      next.loadPreset(
+        ALL_PRESETS[currentPresetRef.current] ?? ALL_PRESETS[PRESET_KEYS[0]],
+        0,
+      )
+      visualizerRef.current = next
+    } catch (e: unknown) {
+      console.warn('Rebuild visualizer failed:', e)
+    }
+  }
+
   // Cleanup při unmountu nebo změně audioBuffer (jiný soubor).
   useEffect(() => {
     return () => {
@@ -128,12 +184,12 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
         idleOscillatorRef.current = osc
         idleGainRef.current = idleGain
 
-        // Butterchurn vizualizér.
-        const visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
-          width: CANVAS_WIDTH,
-          height: CANVAS_HEIGHT,
-          pixelRatio: window.devicePixelRatio || 1,
-        })
+        // Butterchurn vizualizér (opts z aktuálních controls — mesh/AA/ostrost).
+        const visualizer = butterchurn.createVisualizer(
+          audioCtx,
+          canvas,
+          buildVisualizerOptions(),
+        )
         visualizerRef.current = visualizer
         visualizer.connectAudio(osc)
         visualizer.loadPreset(ALL_PRESETS[currentPreset], 0)
@@ -156,10 +212,11 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
           document.addEventListener('pointerdown', pendingResume)
         }
 
-        // Render loop — i v suspended stavu Butterchurn renderuje preset
-        // s time-driven motion (presety mají vlastní `time` uniforms).
+        // Render loop — čte visualizerRef.current (ne captured `visualizer`),
+        // aby přežil rebuild při změně ostrosti. I v suspended stavu Butterchurn
+        // renderuje preset s time-driven motion.
         const renderFrame = () => {
-          visualizer.render()
+          visualizerRef.current?.render()
           animationFrameRef.current = requestAnimationFrame(renderFrame)
         }
         animationFrameRef.current = requestAnimationFrame(renderFrame)
@@ -180,6 +237,55 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioBuffer])
+
+  // ─── Živé aplikování controls (Fáze 6) ───────────────────────────────────
+  // Mesh detail — živě přes setInternalMeshSize.
+  useEffect(() => {
+    const mesh = MESH_SIZES[controls.meshLevel] ?? MESH_SIZES[1]
+    try {
+      visualizerRef.current?.setInternalMeshSize(mesh[0], mesh[1])
+    } catch {
+      // starší/odlišná verze API — ignorujeme
+    }
+  }, [controls.meshLevel])
+
+  // Anti-aliasing — živě přes setOutputAA.
+  useEffect(() => {
+    try {
+      visualizerRef.current?.setOutputAA(controls.antialias)
+    } catch {
+      // ignore
+    }
+  }, [controls.antialias])
+
+  // Ostrost (textureRatio) nemá live setter → rebuild vizualizéru. Initial
+  // hodnota je už v create opts, takže rebuild děláme jen při pozdější změně.
+  useEffect(() => {
+    if (!visualizerRef.current) return
+    rebuildVisualizer()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controls.sharpness])
+
+  // Auto-cyklení presetů — časovač střídá náhodný preset.
+  useEffect(() => {
+    if (!controls.autoCycle) return
+    const intervalMs = Math.max(2, controls.cycleSeconds) * 1000
+    const id = window.setInterval(() => {
+      if (presetOptions.length === 0) return
+      let key = currentPresetRef.current
+      if (presetOptions.length > 1) {
+        do {
+          key = presetOptions[Math.floor(Math.random() * presetOptions.length)]
+        } while (key === currentPresetRef.current)
+      }
+      onPresetChange(key)
+      visualizerRef.current?.loadPreset(
+        ALL_PRESETS[key],
+        controlsRef.current.blendSeconds,
+      )
+    }, intervalMs)
+    return () => window.clearInterval(id)
+  }, [controls.autoCycle, controls.cycleSeconds, presetOptions, onPresetChange])
 
   const stopAndCleanup = () => {
     if (animationFrameRef.current !== null) {
@@ -234,11 +340,11 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
         stopAndCleanup()
         audioCtx = new AudioContext()
         audioCtxRef.current = audioCtx
-        visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
-          width: CANVAS_WIDTH,
-          height: CANVAS_HEIGHT,
-          pixelRatio: window.devicePixelRatio || 1,
-        })
+        visualizer = butterchurn.createVisualizer(
+          audioCtx,
+          canvas,
+          buildVisualizerOptions(),
+        )
         visualizerRef.current = visualizer
         visualizer.loadPreset(ALL_PRESETS[currentPreset], 0)
       }
@@ -285,11 +391,10 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
       setError(null)
 
       // Render loop už běží z idle preview useEffectu — pokud z nějakého důvodu
-      // neběží (fallback path), spustíme ho teď.
+      // neběží (fallback path), spustíme ho teď. Čte visualizerRef.current.
       if (animationFrameRef.current === null) {
-        const vis = visualizer
         const renderFrame = () => {
-          vis.render()
+          visualizerRef.current?.render()
           animationFrameRef.current = requestAnimationFrame(renderFrame)
         }
         animationFrameRef.current = requestAnimationFrame(renderFrame)
@@ -331,10 +436,7 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
 
   const changePreset = (key: string) => {
     onPresetChange(key)
-    const vis = visualizerRef.current
-    if (vis) {
-      vis.loadPreset(ALL_PRESETS[key], PRESET_BLEND_SECONDS)
-    }
+    visualizerRef.current?.loadPreset(ALL_PRESETS[key], controlsRef.current.blendSeconds)
   }
 
   const changeVolume = (v: number) => {
@@ -345,6 +447,7 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
   }
 
   const isRunning = status === 'playing' || status === 'paused'
+  const activeCount = countActive(controls)
 
   // Imperative API pro App.tsx keyboard shortcuts (Fáze 4.6).
   useImperativeHandle(
@@ -510,6 +613,152 @@ export const Visualizer = forwardRef<VisualizerHandle, VisualizerProps>(function
             ? `Generuji náhledy… ${thumbsDone}/${thumbsTotal}`
             : '↻ Přegenerovat náhledy'}
         </button>
+      </div>
+
+      {/* Nastavení vizualizéru (Fáze 6) — sbalitelný panel s ladicími parametry.
+          Butterchurn presety nejdou ladit zevnitř (Milkdrop rovnice jsou
+          zapečené), ale globální chování renderu ano. */}
+      <div className="mt-3 border-t border-neutral-800 pt-3">
+        <button
+          type="button"
+          onClick={() => setControlsOpen((s) => !s)}
+          className="w-full flex items-center justify-between text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+          aria-expanded={controlsOpen}
+        >
+          <span className="flex items-center gap-2">
+            <svg
+              viewBox="0 0 24 24"
+              className={`h-3 w-3 transition-transform ${controlsOpen ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            Nastavení vizualizéru
+          </span>
+          {!controlsOpen && activeCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-purple-600/20 text-purple-300 text-[10px]">
+              {activeCount} aktivní
+            </span>
+          )}
+        </button>
+
+        {controlsOpen && (
+          <div className="mt-3 space-y-4">
+            {/* Auto-cyklení presetů */}
+            <div>
+              <label className="flex items-center gap-2 text-sm text-neutral-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={controls.autoCycle}
+                  onChange={(e) => updateControls({ autoCycle: e.target.checked })}
+                  className="accent-purple-500"
+                />
+                Auto-cyklení presetů
+              </label>
+              {controls.autoCycle && (
+                <div className="mt-2 flex items-center gap-3 pl-6">
+                  <span className="text-xs text-neutral-500 w-28 shrink-0">
+                    Každých {controls.cycleSeconds} s
+                  </span>
+                  <input
+                    type="range"
+                    min={3}
+                    max={60}
+                    step={1}
+                    value={controls.cycleSeconds}
+                    onChange={(e) =>
+                      updateControls({ cycleSeconds: parseInt(e.target.value, 10) })
+                    }
+                    className="flex-1 accent-purple-500"
+                    aria-label="Interval auto-cyklení"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Doba přechodu mezi presety */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-neutral-500 w-32 shrink-0">
+                Přechod: {controls.blendSeconds.toFixed(1)} s
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={5}
+                step={0.5}
+                value={controls.blendSeconds}
+                onChange={(e) =>
+                  updateControls({ blendSeconds: parseFloat(e.target.value) })
+                }
+                className="flex-1 accent-purple-500"
+                aria-label="Doba přechodu mezi presety"
+              />
+            </div>
+
+            {/* Detail warp mřížky */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-neutral-500 w-32 shrink-0">
+                Detail: {MESH_LABELS[controls.meshLevel]}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={MESH_SIZES.length - 1}
+                step={1}
+                value={controls.meshLevel}
+                onChange={(e) =>
+                  updateControls({ meshLevel: parseInt(e.target.value, 10) })
+                }
+                className="flex-1 accent-purple-500"
+                aria-label="Detail warp mřížky"
+              />
+            </div>
+
+            {/* Ostrost (textureRatio — rebuild) */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-neutral-500 w-32 shrink-0">
+                Ostrost: {SHARPNESS_LABELS[controls.sharpness]}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={TEXTURE_RATIOS.length - 1}
+                step={1}
+                value={controls.sharpness}
+                onChange={(e) =>
+                  updateControls({ sharpness: parseInt(e.target.value, 10) })
+                }
+                className="flex-1 accent-purple-500"
+                aria-label="Ostrost renderu"
+              />
+            </div>
+
+            {/* Anti-aliasing */}
+            <label className="flex items-center gap-2 text-sm text-neutral-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={controls.antialias}
+                onChange={(e) => updateControls({ antialias: e.target.checked })}
+                className="accent-purple-500"
+              />
+              Anti-aliasing (vyhlazení hran)
+            </label>
+
+            {activeCount > 0 && (
+              <button
+                type="button"
+                onClick={resetControls}
+                className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+              >
+                ↺ Výchozí nastavení
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (

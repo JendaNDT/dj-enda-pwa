@@ -196,6 +196,30 @@ testovat po každém kroku, commit + push, ověřit deploy).
 
 ---
 
+## Fáze 6 — Ladicí parametry vizualizéru (post-MVP)
+
+Cíl: dát uživateli kontrolu nad chováním vizualizéru.
+
+### Classic (Butterchurn)
+
+Presety samotné ladit nejdou (Milkdrop rovnice zapečené), ale globální chování
+renderu ano. Vše perzistováno v localStorage (`dj-enda:classic-controls`).
+
+| # | Bod | Status |
+|---|---|---|
+| 6.1 | Auto-cyklení presetů (časovač, náhodný preset, interval) | ✅ done |
+| 6.2 | Doba přechodu mezi presety (blend slider) | ✅ done |
+| 6.3 | Detail warp mřížky (setInternalMeshSize, živě) | ✅ done |
+| 6.4 | Ostrost / textureRatio (přes rebuild vizualizéru) | ✅ done |
+| 6.5 | Anti-aliasing toggle (setOutputAA, živě) | ✅ done |
+
+### Modern / AI (odloženo)
+
+Modern uniformy by šlo vystavit jako per-preset posuvníky, AI má parametry už
+ve stylu/promptu. Zatím neimplementováno — kandidát na další fázi.
+
+---
+
 ## Co je *mimo* roadmap (vědomé volby)
 
 - ➖ Real-time diffusion video v prohlížeči (Stable Diffusion Turbo) — v 2026
