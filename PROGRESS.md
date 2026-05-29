@@ -11,9 +11,10 @@ dokončeném bodě z `ROADMAP.md`.
 - Fáze 1–5 + backlog presety 4.14/4.15 + Fáze 6 (Classic ladicí parametry) hotové,
   vše na produkci. Modern má 8 presetů.
 - Zbývající volitelný backlog: **2.5d** Classic export do Web Workeru (doporučeno
-  vynechat — Butterchurn potřebuje real-time AudioContext, ve workeru není), nahrát
-  3 showcase MP4 do `public/showcase/{classic,modern,ai}.mp4`, případně **per-preset
-  parametry pro Modern** (uniformy → posuvníky) — zatím neimplementováno.
+  vynechat — Butterchurn potřebuje real-time AudioContext, ve workeru není),
+  **showcase MP4** — Classic + Modern hotové (`public/showcase/{classic,modern}.mp4`,
+  640x360 tiché web loopy), zbývá jen AI; případně **per-preset parametry pro Modern**
+  (uniformy → posuvníky) — zatím neimplementováno.
 - Workflow: před push `npx tsc -b`; commit/push dělá Jenda lokálně (Cowork
   sandbox neumí psát do `.git` — index.lock „Operation not permitted").
 **Strategie:** Fal.ai → HuggingFace (free) + Three.js shader transitions místo
@@ -150,6 +151,10 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
     * **Adresář `public/showcase/`** vytvořen s `.gitkeep`. Jenda může
       kdykoliv hodit reálná MP4 (`classic.mp4`, `modern.mp4`, `ai.mp4`)
       a Hero je automaticky použije bez code změn.
+    * **2026-05-29:** přidány reálné `classic.mp4` (905 kB) a `modern.mp4`
+      (216 kB) — export z appky (720p) → ffmpeg na 640x360 tiché loopy
+      (`-an`, H.264, crf 33/30, `+faststart`). AI zatím zůstává na
+      placeholderu. Popis Modern karty opraven na „8 vlastních efektů".
     * **Label overlay** — gradient bottom-to-top s názvem režimu + popisem
       pod ním. Vždy viditelný, na hover karta zezelená border.
     * Mount v `App.tsx` pre-upload větvi nad AudioUpload zónou.
@@ -786,8 +791,9 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 - **Per-preset parametry pro Modern** (TSL uniformy → posuvníky v UI) — nejlepší
   kandidát na další fázi. AI má parametry už ve stylu/promptu; Classic má ladění
   z Fáze 6.
-- Nahrát 3 **showcase MP4** do `public/showcase/{classic,modern,ai}.mp4` (Hero je
-  použije bez code změn) — vyrábí Jenda exportem z appky.
+- **showcase MP4** — Classic + Modern hotové (640x360 tiché loopy v
+  `public/showcase/`); zbývá jen `ai.mp4` (AI karta zatím placeholder) — vyrábí
+  Jenda exportem z appky.
 - **2.5d** Classic export do Web Workeru — doporučeno vynechat (Butterchurn
   vyžaduje real-time AudioContext, ve workeru není; export to nezrychlí).
 

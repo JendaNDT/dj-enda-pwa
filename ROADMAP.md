@@ -173,7 +173,7 @@ a delight detaily. Rozdělené do 4 roundů podle dopadu a velikosti.
 
 | # | Bod | Velikost |
 |---|---|---|
-| 5.10 | Pre-upload hero showcase (3 looping ukázky Classic/Modern/AI) ✅ done (placeholders; videa Jenda nahraje později) | L |
+| 5.10 | Pre-upload hero showcase (3 looping ukázky Classic/Modern/AI) ✅ done (Classic + Modern reálná videa; AI zatím placeholder) | L |
 | 5.11 | Live preview hned po uploadu (idle vizualizér bez audio) ✅ done | M |
 
 ### Round 4 — Ambiciózní features (každý samostatná session)

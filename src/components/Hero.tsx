@@ -38,7 +38,7 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
   {
     kind: 'modern',
     label: 'Modern',
-    description: 'WebGPU shadery, 6 vlastních efektů, filmové vzezření',
+    description: 'WebGPU shadery, 8 vlastních efektů, filmové vzezření',
     videoSrc: '/showcase/modern.mp4',
     placeholderGradient: 'from-cyan-900 via-blue-900 to-purple-900',
     icon: '◈',
