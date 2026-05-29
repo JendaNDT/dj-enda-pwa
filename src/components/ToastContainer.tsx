@@ -57,6 +57,18 @@ function ToastItem({ toast }: { toast: Toast }) {
         )}
       </span>
       <span className="flex-1 min-w-0">{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => {
+            toast.action!.onClick()
+            dismissToast(toast.id)
+          }}
+          className="shrink-0 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium transition-colors"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => dismissToast(toast.id)}

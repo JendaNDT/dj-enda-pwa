@@ -18,10 +18,17 @@ import { useEffect, useState } from 'react'
 
 export type ToastKind = 'success' | 'error' | 'info'
 
+/** Volitelné akční tlačítko v toastu (např. „Obnovit" u nové verze). */
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 export interface Toast {
   id: string
   message: string
   kind: ToastKind
+  action?: ToastAction
 }
 
 const DEFAULT_DURATION_MS = 3000
@@ -42,9 +49,10 @@ export function showToast(
   message: string,
   kind: ToastKind = 'success',
   durationMs: number = DEFAULT_DURATION_MS,
+  action?: ToastAction,
 ): string {
   const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-  toasts = [...toasts, { id, message, kind }]
+  toasts = [...toasts, { id, message, kind, action }]
   emit()
   if (durationMs > 0) {
     setTimeout(() => dismissToast(id), durationMs)

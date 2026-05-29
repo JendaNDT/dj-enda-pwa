@@ -294,6 +294,15 @@ příští session zase trefila. Formát: krátký bullet point + datum.
   exportu ve `Visualizer.tsx` je neškodný — **eslint není v build pipeline**
   (`build = tsc -b && vite build`), takže gate zůstává `tsc -b`.
 
+- **2026-05-29** — **PWA `registerType: 'autoUpdate'` přenačítá stránku ~1–2 s
+  po načtení**, když nový SW nahradí starý (tj. po každém deployi). Není to bug
+  v našem kódu (žádné `location.reload`), dělá to vite-plugin-pwa při převzetí
+  řízení novým service workerem (`controllerchange`). Ověřeno živě přes Chrome:
+  při stejné verzi se NEreloadne (marker přežije, `navType` zůstává „navigate"),
+  reload jen při výměně SW. **Fix:** `registerType: 'prompt'` + `onNeedRefresh`
+  → toast „Obnovit" (reload až na klik, `updateSW(true)`), `devOptions.enabled:
+  false`. Toast systém (`toast.ts`) rozšířen o volitelný `action` (label+onClick).
+
 ---
 
 ## 8. Reference

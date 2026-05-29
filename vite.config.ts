@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.svg'],
       workbox: {
         // Default je 2 MiB, ale náš main bundle s Three.js + Butterchurn +
@@ -48,7 +48,9 @@ export default defineConfig({
         ],
       },
       devOptions: {
-        enabled: true,
+        // SW v dev módu vypnutý — dělal cache/reload neplechu a na ladění není
+        // potřeba (PWA se testuje na produkčním buildu).
+        enabled: false,
       },
     }),
   ],

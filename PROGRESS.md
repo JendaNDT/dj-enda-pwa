@@ -28,6 +28,14 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 ## Co je hotové
 
+- **PWA auto-reload fix (2026-05-29):** appka se ~2 s po načtení sama
+  přenačítala — `registerType: 'autoUpdate'` reloadoval stránku při výměně SW
+  (po každém deployi). Přepnuto na **`prompt`** + `onNeedRefresh` → toast
+  „Obnovit" (reload až na klik přes `updateSW(true)`). `devOptions.enabled:
+  false` (dev SW vypnutý). Toast (`toast.ts`) rozšířen o `action` tlačítko,
+  vykreslení v `ToastContainer.tsx`. Ověřeno živě v Chrome (`navType` zůstává
+  „navigate", marker přežije). `tsc -b` 0, lint beze změny.
+
 - **Export rozlišení × fps — Fáze 7.2 (2026-05-29, čeká na runtime ověření):**
   Místo pevných presetů dva nezávislé selecty — **rozlišení** 720p/1080p/1440p/2160p
   a **fps** 30/60/120. Bitrate se počítá (base@30 × faktor: 60→×1,5, 120→×2,25).
