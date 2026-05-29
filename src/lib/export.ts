@@ -37,72 +37,136 @@ export interface ExportProgress {
 }
 
 /**
- * Video kvalitativní preset — rozlišení, FPS, bitrate.
- *
- * Aktuální nabídka odpovídá YouTube doporučením pro 1080p / 1440p uploady.
- * Audio bitrate je konstantní (128 kbps AAC) — kvalita videa je dominantní
- * faktor velikosti.
+ * Export kvalita = rozlišení × snímková frekvence (dva nezávislé výběry).
+ * Bitrate se počítá: base@30fps podle rozlišení × faktor za fps (30→1, 60→1.5,
+ * 120→2.25). Hodnoty odpovídají YouTube doporučením. Audio bitrate konstantní
+ * (128 kbps AAC) — kvalita videa je dominantní faktor velikosti.
  */
-export interface ExportQuality {
+export interface ExportResolution {
   id: string
-  name: string
-  description: string
+  label: string
+  width: number
+  height: number
+  /** Video bitrate při 30 fps (bps). Vyšší fps se násobí faktorem. */
+  baseBitrate30: number
+}
+
+export const EXPORT_RESOLUTIONS: ExportResolution[] = [
+  { id: '720p', label: '720p', width: 1280, height: 720, baseBitrate30: 5_000_000 },
+  { id: '1080p', label: '1080p', width: 1920, height: 1080, baseBitrate30: 8_000_000 },
+  { id: '1440p', label: '1440p', width: 2560, height: 1440, baseBitrate30: 16_000_000 },
+  { id: '2160p', label: '2160p (4K)', width: 3840, height: 2160, baseBitrate30: 40_000_000 },
+]
+
+export const EXPORT_FPS_OPTIONS = [30, 60, 120] as const
+
+export const DEFAULT_RESOLUTION_ID = '1080p'
+export const DEFAULT_FPS = 60
+
+/** Resolved spec, který konzumují export funkce. */
+export interface ExportQuality {
   width: number
   height: number
   fps: number
   videoBitrate: number
 }
 
-export const EXPORT_QUALITIES: ExportQuality[] = [
-  {
-    id: 'fast',
-    name: 'Rychlý',
-    description: '720p30 · 5 Mbps · pro test nebo sociální média',
-    width: 1280,
-    height: 720,
-    fps: 30,
-    videoBitrate: 5_000_000,
-  },
-  {
-    id: 'standard',
-    name: 'Standard',
-    description: '1080p60 · 12 Mbps · YouTube doporučeno',
-    width: 1920,
-    height: 1080,
-    fps: 60,
-    videoBitrate: 12_000_000,
-  },
-  {
-    id: 'cinema',
-    name: 'Filmový',
-    description: '1080p30 · 10 Mbps · plynulý ale plynulý',
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    videoBitrate: 10_000_000,
-  },
-  {
-    id: 'hq',
-    name: 'Vysoká kvalita',
-    description: '1440p30 · 16 Mbps · pro archiv',
-    width: 2560,
-    height: 1440,
-    fps: 30,
-    videoBitrate: 16_000_000,
-  },
-]
+const FPS_BITRATE_FACTORS: Record<number, number> = { 30: 1, 60: 1.5, 120: 2.25 }
 
-export const DEFAULT_EXPORT_QUALITY_ID = 'standard'
-
-export function getExportQualityById(id: string): ExportQuality | undefined {
-  return EXPORT_QUALITIES.find((q) => q.id === id)
+/** Faktor bitrate podle fps; fallback lineárně fps/30 pro neznámé hodnoty. */
+function fpsBitrateFactor(fps: number): number {
+  return FPS_BITRATE_FACTORS[fps] ?? fps / 30
 }
 
-function resolveQuality(id: string | undefined): ExportQuality {
+/** Vrátí rozlišení podle id, s fallbackem na default. */
+export function getExportResolutionById(id: string | undefined): ExportResolution {
   return (
-    (id ? getExportQualityById(id) : undefined) ??
-    getExportQualityById(DEFAULT_EXPORT_QUALITY_ID)!
+    EXPORT_RESOLUTIONS.find((r) => r.id === id) ??
+    EXPORT_RESOLUTIONS.find((r) => r.id === DEFAULT_RESOLUTION_ID)!
   )
+}
+
+/** Spočítá video bitrate (bps) pro dané rozlišení + fps. */
+export function computeVideoBitrate(resolutionId: string, fps: number): number {
+  return Math.round(
+    getExportResolutionById(resolutionId).baseBitrate30 * fpsBitrateFactor(fps),
+  )
+}
+
+/**
+ * Spočítá nejnižší H.264 level, který pojme dané rozlišení + fps, a vrátí
+ * codec string (High profile) pro WebCodecs. Tabulka dle ITU-T H.264 Annex A
+ * (MaxMBPS = makrobloky/s, MaxFS = velikost snímku v makroblocích). Level je
+ * nutný, aby `isConfigSupported` neodmítal kombinaci jen kvůli moc nízkému levelu.
+ */
+function h264CodecString(width: number, height: number, fps: number): string {
+  const frameMbs = Math.ceil(width / 16) * Math.ceil(height / 16)
+  const mbps = frameMbs * fps
+  // [level_idc, MaxMBPS, MaxFS]
+  const LEVELS: Array<[number, number, number]> = [
+    [31, 108000, 3600],
+    [32, 216000, 5120],
+    [40, 245760, 8192],
+    [42, 522240, 8704],
+    [50, 589824, 22080],
+    [51, 983040, 36864],
+    [52, 2073600, 36864],
+    [60, 4177920, 139264],
+    [61, 8355840, 139264],
+    [62, 16711680, 139264],
+  ]
+  let idc = 62
+  for (const [lv, maxMbps, maxFs] of LEVELS) {
+    if (frameMbs <= maxFs && mbps <= maxMbps) {
+      idc = lv
+      break
+    }
+  }
+  return 'avc1.6400' + idc.toString(16).padStart(2, '0')
+}
+
+/**
+ * Zjistí, zda prohlížeč / HW umí zakódovat H.264 v daném rozlišení a fps
+ * (WebCodecs `VideoEncoder.isConfigSupported`). Vrací true i když API chybí —
+ * gating je best-effort, runtime případnou chybu odchytí.
+ */
+export async function isExportConfigSupported(
+  resolutionId: string,
+  fps: number,
+): Promise<boolean> {
+  if (
+    typeof VideoEncoder === 'undefined' ||
+    typeof VideoEncoder.isConfigSupported !== 'function'
+  ) {
+    return true
+  }
+  const res = getExportResolutionById(resolutionId)
+  try {
+    const support = await VideoEncoder.isConfigSupported({
+      codec: h264CodecString(res.width, res.height, fps),
+      width: res.width,
+      height: res.height,
+      framerate: fps,
+      bitrate: computeVideoBitrate(resolutionId, fps),
+    })
+    return support.supported === true
+  } catch {
+    return false
+  }
+}
+
+function resolveQuality(
+  resolutionId: string | undefined,
+  fps: number | undefined,
+): ExportQuality {
+  const res = getExportResolutionById(resolutionId)
+  const f = fps ?? DEFAULT_FPS
+  return {
+    width: res.width,
+    height: res.height,
+    fps: f,
+    videoBitrate: Math.round(res.baseBitrate30 * fpsBitrateFactor(f)),
+  }
 }
 
 /**
@@ -155,7 +219,10 @@ export function trimAudioBuffer(
 export interface ExportOptions {
   audioBuffer: AudioBuffer
   presetKey: string
-  qualityId?: string
+  /** ID rozlišení (z EXPORT_RESOLUTIONS). Default 1080p. */
+  resolutionId?: string
+  /** Snímková frekvence (30 / 60 / 120). Default 60. */
+  fps?: number
   /** Cíl exportu — stream na disk (dlouhé / 4K) nebo in-memory buffer. */
   destination?: ExportDestination
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
@@ -172,7 +239,10 @@ export interface ExportModernOptions {
   audioBuffer: AudioBuffer
   /** ID Modern presetu (z `MODERN_PRESETS`). */
   presetId: string
-  qualityId?: string
+  /** ID rozlišení (z EXPORT_RESOLUTIONS). Default 1080p. */
+  resolutionId?: string
+  /** Snímková frekvence (30 / 60 / 120). Default 60. */
+  fps?: number
   /** Cíl exportu — stream na disk (dlouhé / 4K) nebo in-memory buffer. */
   destination?: ExportDestination
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
@@ -187,7 +257,10 @@ export interface ExportAiOptions {
   audioBuffer: AudioBuffer
   /** URL všech 8 AI keyframes (musí být ready). */
   imageUrls: ReadonlyArray<string>
-  qualityId?: string
+  /** ID rozlišení (z EXPORT_RESOLUTIONS). Default 1080p. */
+  resolutionId?: string
+  /** Snímková frekvence (30 / 60 / 120). Default 60. */
+  fps?: number
   /** Cíl exportu — stream na disk (dlouhé / 4K) nebo in-memory buffer. */
   destination?: ExportDestination
   /** Volitelný trim — pokud chybí, exportuje se celá skladba. */
@@ -277,7 +350,8 @@ export async function exportVideo(options: ExportOptions): Promise<Blob | null> 
   const {
     audioBuffer: srcBuffer,
     presetKey,
-    qualityId,
+    resolutionId,
+    fps,
     destination,
     range,
     watermark,
@@ -285,7 +359,7 @@ export async function exportVideo(options: ExportOptions): Promise<Blob | null> 
     onProgress,
     signal,
   } = options
-  const quality = resolveQuality(qualityId)
+  const quality = resolveQuality(resolutionId, fps)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
   const EXPORT_FPS = quality.fps
@@ -480,7 +554,8 @@ export async function exportVideoModern(
   const {
     audioBuffer: srcBuffer,
     presetId,
-    qualityId,
+    resolutionId,
+    fps,
     destination,
     range,
     watermark,
@@ -488,7 +563,7 @@ export async function exportVideoModern(
     onProgress,
     signal,
   } = options
-  const quality = resolveQuality(qualityId)
+  const quality = resolveQuality(resolutionId, fps)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
   const EXPORT_FPS = quality.fps
@@ -699,7 +774,8 @@ export async function exportVideoAi(
   const {
     audioBuffer: srcBuffer,
     imageUrls,
-    qualityId,
+    resolutionId,
+    fps,
     destination,
     range,
     watermark,
@@ -707,7 +783,7 @@ export async function exportVideoAi(
     onProgress,
     signal,
   } = options
-  const quality = resolveQuality(qualityId)
+  const quality = resolveQuality(resolutionId, fps)
   const EXPORT_WIDTH = quality.width
   const EXPORT_HEIGHT = quality.height
   const EXPORT_FPS = quality.fps
@@ -1049,9 +1125,10 @@ export async function exportVideoAi(
  */
 export function estimateOutputSize(
   durationSeconds: number,
-  qualityId?: string,
+  resolutionId?: string,
+  fps?: number,
 ): number {
-  const quality = resolveQuality(qualityId)
+  const quality = resolveQuality(resolutionId, fps)
   const videoBytes = (durationSeconds * quality.videoBitrate) / 8
   const audioBytes = (durationSeconds * AUDIO_BITRATE) / 8
   return Math.floor(videoBytes + audioBytes)

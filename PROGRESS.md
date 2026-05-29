@@ -28,6 +28,19 @@ natrvalo jako default — uživatel ho esteticky preferuje nad Three.js. Modern
 
 ## Co je hotové
 
+- **Export rozlišení × fps — Fáze 7.2 (2026-05-29, čeká na runtime ověření):**
+  Místo pevných presetů dva nezávislé selecty — **rozlišení** 720p/1080p/1440p/2160p
+  a **fps** 30/60/120. Bitrate se počítá (base@30 × faktor: 60→×1,5, 120→×2,25).
+  `export.ts`: `EXPORT_RESOLUTIONS` + `EXPORT_FPS_OPTIONS` + `computeVideoBitrate`
+  + `resolveQuality(resolutionId, fps)`; export funkce a `estimateOutputSize` berou
+  `resolutionId` + `fps`. **Gating:** `isExportConfigSupported` přes WebCodecs
+  `VideoEncoder.isConfigSupported` (codec string s dopočítaným H.264 levelem) —
+  `ExportButton` proklepne kombinace po mountu, nepodporované (typicky **2160p120**)
+  v fps selectu zašedne, změna rozlišení dopadne fps na podporované, pojistka i
+  před exportem. 120 fps experimentální + poznámka (YouTube strop 60). Poznámka
+  u AI o měkčím 4K (keyframes ~1 MP). Default 1080p/60. `tsc -b` 0, lint beze
+  změny. Staví na streamování (7.1) → velké 4K/dlouhé soubory nepadnou na paměť.
+
 - **Streamovací export — krok 1 (2026-05-29, čeká na runtime ověření Jendou):**
   Export umí psát MP4 rovnou na disk přes File System Access API → paměť zůstává
   plochá i u dlouhých / 4K stop (řeší `BufferTarget` in-memory limit). `export.ts`:

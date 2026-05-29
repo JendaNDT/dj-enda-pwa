@@ -220,6 +220,24 @@ ve stylu/promptu. Zatím neimplementováno — kandidát na další fázi.
 
 ---
 
+## Fáze 7 — Export pipeline upgrade (rozjeté)
+
+Cíl: zvládnout dlouhé (8+ min) a vysoké rozlišení exporty bez pádů na paměť +
+flexibilní samostatná volba rozlišení a snímkové frekvence.
+
+| # | Bod | Status |
+|---|---|---|
+| 7.1 | Streamování exportu na disk (showSaveFilePicker + StreamTarget, fastStart:false) | ✅ done |
+| 7.2a | Dva selecty: rozlišení (720p–2160p) × fps (30/60/120), počítaný bitrate | ✅ done |
+| 7.2b | Capability gating (VideoEncoder.isConfigSupported) — zašednout nepodporované (2160p120), 120fps experimentální | ✅ done |
+| 7.2c | Dotažení: odhad velikosti, default 1080p/60, poznámka u AI o 4K upscalu, docs | ✅ done |
+
+Bitrate = base@30fps podle rozlišení (720p:5 / 1080p:8 / 1440p:16 / 2160p:40 Mbps)
+× faktor fps (30→1, 60→1.5, 120→2.25). Staví na 7.1 (velké soubory nepadnou na
+paměť). Classic export je real-time → 4K120 nemusí GPU stíhat (Modern offline OK).
+
+---
+
 ## Co je *mimo* roadmap (vědomé volby)
 
 - ➖ Real-time diffusion video v prohlížeči (Stable Diffusion Turbo) — v 2026

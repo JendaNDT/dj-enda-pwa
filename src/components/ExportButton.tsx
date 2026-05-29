@@ -8,9 +8,13 @@ import {
   buildExportFilename,
   formatEta,
   formatBytes,
-  EXPORT_QUALITIES,
-  DEFAULT_EXPORT_QUALITY_ID,
-  getExportQualityById,
+  EXPORT_RESOLUTIONS,
+  EXPORT_FPS_OPTIONS,
+  DEFAULT_RESOLUTION_ID,
+  DEFAULT_FPS,
+  getExportResolutionById,
+  computeVideoBitrate,
+  isExportConfigSupported,
   type ExportProgress,
   type ExportRange,
   type ExportCredits,
@@ -57,8 +61,11 @@ export function ExportButton({
   const [status, setStatus] = useState<Status>('idle')
   const [progress, setProgress] = useState<ExportProgress | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [qualityId, setQualityId] = useState<string>(
-    DEFAULT_EXPORT_QUALITY_ID,
+  const [resolutionId, setResolutionId] = useState<string>(DEFAULT_RESOLUTION_ID)
+  const [fps, setFps] = useState<number>(DEFAULT_FPS)
+  /** Podporované kombinace (klíč `${resId}-${fps}`); null = ještě se zjišťuje. */
+  const [supportedCombos, setSupportedCombos] = useState<Set<string> | null>(
+    null,
   )
   /** Thumbnail URLs po dokončeném exportu (3 obrázky: start/middle/end). */
   const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([])
@@ -83,6 +90,28 @@ export function ExportButton({
       return false
     }
   })
+
+  // Probe podporovaných kombinací rozlišení × fps (WebCodecs isConfigSupported).
+  // Jednou po mountu; nepodporované (typicky 2160p120) pak v UI zašedneme.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const ok = new Set<string>()
+      for (const r of EXPORT_RESOLUTIONS) {
+        for (const f of EXPORT_FPS_OPTIONS) {
+          if (await isExportConfigSupported(r.id, f)) ok.add(`${r.id}-${f}`)
+        }
+      }
+      if (!cancelled) setSupportedCombos(ok)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  /** Je kombinace podporovaná? Dokud probe neproběhl (null), bereme vše za OK. */
+  const comboSupported = (rid: string, f: number) =>
+    supportedCombos === null || supportedCombos.has(`${rid}-${f}`)
 
   // Feature-detect Web Share API s File support.
   const canShare =
@@ -156,11 +185,12 @@ export function ExportButton({
   const advancedActiveCount =
     (isTrimmed ? 1 : 0) + (creditsEnabled ? 1 : 0) + (watermark ? 1 : 0)
 
-  const estimatedBytes = estimateOutputSize(effectiveDuration, qualityId)
+  const estimatedBytes = estimateOutputSize(effectiveDuration, resolutionId, fps)
   const filename = buildExportFilename(audioFilename)
   const modeLabel =
     mode === 'classic' ? 'Classic' : mode === 'modern' ? 'Modern' : 'AI Hybrid'
-  const quality = getExportQualityById(qualityId) ?? EXPORT_QUALITIES[1]
+  const resolution = getExportResolutionById(resolutionId)
+  const videoBitrate = computeVideoBitrate(resolutionId, fps)
 
   const handleExportClick = () => {
     setErrorMsg(null)
@@ -172,6 +202,14 @@ export function ExportButton({
   }
 
   const runExport = async () => {
+    // Pojistka: nepodporovaná kombinace (např. 2160p120) se nepustí do exportu.
+    if (!comboSupported(resolutionId, fps)) {
+      setErrorMsg(
+        `${resolution.label} @ ${fps} fps není tímto prohlížečem/HW podporováno. Zvol nižší rozlišení nebo fps.`,
+      )
+      setStatus('error')
+      return
+    }
     setStatus('exporting')
     setProgress({ frame: 0, totalFrames: 1, etaSec: 0, fps: 0 })
     const controller = new AbortController()
@@ -210,7 +248,8 @@ export function ExportButton({
         blob = await exportVideo({
           audioBuffer,
           presetKey,
-          qualityId,
+          resolutionId,
+          fps,
           destination,
           range,
           watermark,
@@ -222,7 +261,8 @@ export function ExportButton({
         blob = await exportVideoModern({
           audioBuffer,
           presetId: presetKey,
-          qualityId,
+          resolutionId,
+          fps,
           destination,
           range,
           watermark,
@@ -237,7 +277,8 @@ export function ExportButton({
         blob = await exportVideoAi({
           audioBuffer,
           imageUrls: aiImageUrls,
-          qualityId,
+          resolutionId,
+          fps,
           destination,
           range,
           watermark,
@@ -357,7 +398,7 @@ export function ExportButton({
     return (
       <div className="px-6 py-5 rounded-2xl bg-amber-950/30 border border-amber-800/50">
         <div className="text-xs uppercase tracking-wider text-amber-400 mb-2">
-          Potvrzení dlouhého exportu · {modeLabel} · {quality.name}
+          Potvrzení dlouhého exportu · {modeLabel} · {resolution.label} · {fps} fps
         </div>
         <p className="text-sm text-neutral-200">
           Exportovaná část má {formatEta(effectiveDuration)}
@@ -529,22 +570,72 @@ export function ExportButton({
         <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">
           Kvalita exportu
         </label>
-        <select
-          value={qualityId}
-          onChange={(e) => setQualityId(e.target.value)}
-          className="w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
-        >
-          {EXPORT_QUALITIES.map((q) => (
-            <option key={q.id} value={q.id}>
-              {q.name} — {q.description}
-            </option>
-          ))}
-        </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <span className="text-xs text-neutral-400 mb-1 block">Rozlišení</span>
+            <select
+              value={resolutionId}
+              onChange={(e) => {
+                const rid = e.target.value
+                setResolutionId(rid)
+                // Když nové rozlišení nepodporuje aktuální fps, spadni na podporované.
+                if (!comboSupported(rid, fps)) {
+                  const ok = EXPORT_FPS_OPTIONS.filter((f) =>
+                    comboSupported(rid, f),
+                  )
+                  setFps(
+                    comboSupported(rid, DEFAULT_FPS)
+                      ? DEFAULT_FPS
+                      : (ok[ok.length - 1] ?? DEFAULT_FPS),
+                  )
+                }
+              }}
+              className="w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
+            >
+              {EXPORT_RESOLUTIONS.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span className="text-xs text-neutral-400 mb-1 block">Snímky / s</span>
+            <select
+              value={fps}
+              onChange={(e) => setFps(Number(e.target.value))}
+              className="w-full h-10 px-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-neutral-100 focus:outline-none focus:border-purple-500"
+            >
+              {EXPORT_FPS_OPTIONS.map((f) => {
+                const ok = comboSupported(resolutionId, f)
+                return (
+                  <option key={f} value={f} disabled={!ok}>
+                    {f} fps{f === 120 ? ' (experiment.)' : ''}
+                    {ok ? '' : ' — nepodporováno'}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+        </div>
         <div className="mt-2 text-xs text-neutral-500">
           Odhad velikosti: <strong>{formatBytes(estimatedBytes)}</strong>
           {' · '}
-          {quality.width}×{quality.height} @ {quality.fps} FPS
+          {resolution.width}×{resolution.height} @ {fps} fps ·{' '}
+          {Math.round(videoBitrate / 1_000_000)} Mbps
         </div>
+        {fps === 120 && (
+          <p className="mt-1 text-xs text-amber-500/80">
+            120 fps je experimentální — YouTube většinou přehrává v 60, soubor je
+            větší a render pomalejší.
+          </p>
+        )}
+        {mode === 'ai' && (resolutionId === '1440p' || resolutionId === '2160p') && (
+          <p className="mt-1 text-xs text-amber-500/80">
+            AI keyframes mají ~1 MP — ve {resolution.label} se upscalují, obraz
+            bude měkčí. Pro AI mód je 1080p obvykle ostřejší volba.
+          </p>
+        )}
       </div>
 
       {/* Pokročilé nastavení toggle (Fáze 5.7) — sbaluje trim, credits, watermark. */}
